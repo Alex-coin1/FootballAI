@@ -52,9 +52,12 @@ import {
   saveOrUpdateTask,
   deleteManagedTask,
   toggleTaskActive,
-  updateTaskReward
+  updateTaskReward,
+  getTaskSubmissions,
+  approveTaskSubmission,
+  rejectTaskSubmission
 } from '../services/adminService';
-import { NFTCard, NFTRarity, User, Task } from '../types';
+import { NFTCard, NFTRarity, User, Task, TaskSubmission } from '../types';
 import { formatBnbAddress, getBscScanUrl } from '../services/web3BnbService';
 import { localizePosition, localizeRarity } from '../i18n/localize';
 
@@ -63,8 +66,8 @@ export const AdminPage: React.FC = () => {
   const isAr = settings.language === 'ar';
   const isAdmin = isUserAdmin(user.walletAddress);
 
-  // Active Tab: 'nfts' | 'tasks' | 'wallets' | 'diagnostics'
-  const [activeTab, setActiveTab] = useState<'nfts' | 'tasks' | 'wallets' | 'diagnostics'>('nfts');
+  // Active Tab: 'nfts' | 'tasks' | 'verifications' | 'wallets' | 'diagnostics'
+  const [activeTab, setActiveTab] = useState<'nfts' | 'tasks' | 'verifications' | 'wallets' | 'diagnostics'>('nfts');
 
   // Diagnostics State
   const [modelLatency, setModelLatency] = useState(38);
@@ -100,6 +103,14 @@ export const AdminPage: React.FC = () => {
   const [quickRewardTask, setQuickRewardTask] = useState<Task | null>(null);
   const [newRewardInput, setNewRewardInput] = useState<string>('');
 
+  // Task Evidence Verifications State
+  const [submissionsList, setSubmissionsList] = useState<TaskSubmission[]>([]);
+  const [subSearch, setSubSearch] = useState('');
+  const [subStatusFilter, setSubStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
+  const [selectedProofImage, setSelectedProofImage] = useState<string | null>(null);
+  const [rejectingSubmission, setRejectingSubmission] = useState<TaskSubmission | null>(null);
+  const [rejectionReasonInput, setRejectionReasonInput] = useState('');
+
   // Wallets State
   const [walletsList, setWalletsList] = useState<User[]>([]);
   const [walletSearch, setWalletSearch] = useState('');
@@ -115,6 +126,8 @@ export const AdminPage: React.FC = () => {
     setTasksList(tasks);
     const users = getAllRegisteredWallets();
     setWalletsList(users);
+    const subs = getTaskSubmissions();
+    setSubmissionsList(subs);
   };
 
   useEffect(() => {
@@ -458,6 +471,59 @@ export const AdminPage: React.FC = () => {
     );
   });
 
+  const filteredSubmissions = submissionsList.filter(s => {
+    const matchesStatus = subStatusFilter === 'ALL' || s.status === subStatusFilter;
+    const q = subSearch.toLowerCase().trim();
+    const matchesQuery = q === '' ||
+      s.username.toLowerCase().includes(q) ||
+      s.userAddress.toLowerCase().includes(q) ||
+      s.taskTitle.toLowerCase().includes(q) ||
+      (s.evidenceNote && s.evidenceNote.toLowerCase().includes(q));
+    return matchesStatus && matchesQuery;
+  });
+
+  const totalPendingSubs = submissionsList.filter(s => s.status === 'PENDING').length;
+  const totalApprovedSubs = submissionsList.filter(s => s.status === 'APPROVED').length;
+  const totalRejectedSubs = submissionsList.filter(s => s.status === 'REJECTED').length;
+
+  const handleApproveSubmission = (subId: string) => {
+    const res = approveTaskSubmission(subId);
+    if (res.success) {
+      showToast(
+        isAr 
+          ? `تم اعتماد إثبات المهمة بنجاح ومنح +${res.submission?.reward.toFixed(2)} FAI للمستخدم!` 
+          : `Mission verified! +${res.submission?.reward.toFixed(2)} FAI awarded to user.`,
+        'success'
+      );
+      refreshData();
+    } else {
+      showToast(res.message || 'Failed to approve', 'warning');
+    }
+  };
+
+  const handleOpenRejectModal = (sub: TaskSubmission) => {
+    setRejectingSubmission(sub);
+    setRejectionReasonInput(isAr ? 'لم يتم العثور على متابعة الحساب أو الإثبات غير واضح' : 'Handle not found or proof insufficient');
+  };
+
+  const handleConfirmReject = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rejectingSubmission) return;
+
+    const res = rejectTaskSubmission(rejectingSubmission.id, rejectionReasonInput);
+    if (res.success) {
+      showToast(
+        isAr 
+          ? 'تم رفض الإثبات وإشعار المستخدم لإعادة المحاولة مع إيضاح السبب' 
+          : 'Submission rejected and user notified to resubmit',
+        'info'
+      );
+      setRejectingSubmission(null);
+      setRejectionReasonInput('');
+      refreshData();
+    }
+  };
+
   const totalListed = nftsList.filter(c => c.tradingStatus === 'LISTED').length;
   const totalScheduled = nftsList.filter(c => c.tradingStatus === 'SCHEDULED').length;
   const totalUnlisted = nftsList.filter(c => c.tradingStatus === 'UNLISTED').length;
@@ -498,7 +564,7 @@ export const AdminPage: React.FC = () => {
           </div>
         </div>
 
-        {/* 4 Navigation Tabs */}
+        {/* 5 Navigation Tabs */}
         <div className="flex rounded-2xl bg-slate-900/90 p-1 border border-slate-800 gap-1 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setActiveTab('nfts')}
@@ -522,6 +588,23 @@ export const AdminPage: React.FC = () => {
           >
             <CheckSquare className="h-4 w-4" />
             <span>{isAr ? 'المهام ومكافآت FAI' : 'Missions & Rewards'}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('verifications')}
+            className={`flex-1 min-w-[160px] flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold font-tech uppercase tracking-wider transition ${
+              activeTab === 'verifications'
+                ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950 shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <ShieldCheck className="h-4 w-4" />
+            <span>{isAr ? 'التحقق من المهام' : 'Verifications'}</span>
+            {submissionsList.filter(s => s.status === 'PENDING').length > 0 && (
+              <span className="rounded-full bg-amber-400 text-slate-950 text-[10px] font-black px-1.5 py-0.2 animate-pulse">
+                {submissionsList.filter(s => s.status === 'PENDING').length}
+              </span>
+            )}
           </button>
 
           <button
@@ -924,6 +1007,269 @@ export const AdminPage: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          TAB: TASK EVIDENCE VERIFICATIONS & APPROVALS (Admin Controlled)
+          ===================================================================== */}
+      {activeTab === 'verifications' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          {/* Header Banner */}
+          <div className="rounded-2xl border border-cyan-500/30 bg-[#070e1c] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold font-display text-white flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-cyan-400" />
+                <span>{isAr ? 'مركز مراجعة واعتماد أدلة المهام المكتملة' : 'Mission Evidence Verification Queue'}</span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                {isAr 
+                  ? 'مراجعة طلبات المستخدمين ولقطات الشاشة المقدمة، والموافقة عليها لمنح نقاط FAI لحساباتهم أو رفضها.' 
+                  : 'Review submitted evidence & screenshots before approving to credit FAI points or rejecting.'}
+              </p>
+            </div>
+
+            <button
+              onClick={refreshData}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white transition shrink-0"
+            >
+              <RefreshCw className="h-3.5 w-3.5 text-cyan-400" />
+              <span>{isAr ? 'تحديث الطلبات' : 'Refresh Queue'}</span>
+            </button>
+          </div>
+
+          {/* Metric Overview Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="rounded-2xl border border-slate-800 bg-[#070e1c] p-3.5">
+              <span className="text-[10px] font-tech text-slate-400 uppercase">{isAr ? 'إجمالي الطلبات' : 'Total Submissions'}</span>
+              <div className="mt-1 flex items-baseline gap-1">
+                <span className="text-2xl font-black font-display text-white">{submissionsList.length}</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-amber-500/40 bg-amber-950/20 p-3.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-tech text-amber-300 uppercase">{isAr ? 'قيد المراجعة' : 'Pending Review'}</span>
+                {totalPendingSubs > 0 && <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping" />}
+              </div>
+              <div className="mt-1 flex items-baseline gap-1">
+                <span className="text-2xl font-black font-display text-amber-400">{totalPendingSubs}</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/20 p-3.5">
+              <span className="text-[10px] font-tech text-emerald-300 uppercase">{isAr ? 'تم اعتمادها' : 'Approved'}</span>
+              <div className="mt-1 flex items-baseline gap-1">
+                <span className="text-2xl font-black font-display text-emerald-400">{totalApprovedSubs}</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-rose-500/40 bg-rose-950/20 p-3.5">
+              <span className="text-[10px] font-tech text-rose-300 uppercase">{isAr ? 'مرفوضة' : 'Rejected'}</span>
+              <div className="mt-1 flex items-baseline gap-1">
+                <span className="text-2xl font-black font-display text-rose-400">{totalRejectedSubs}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Filters & Search */}
+          <div className="flex flex-col sm:flex-row gap-2.5">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 rtl:right-3.5 rtl:left-auto" />
+              <input
+                type="text"
+                value={subSearch}
+                onChange={e => setSubSearch(e.target.value)}
+                placeholder={isAr ? 'ابحث باسم المستخدم، عنوان المحفظة، أو اسم المهمة...' : 'Search by username, wallet, or mission...'}
+                className="w-full rounded-xl border border-slate-800 bg-[#070e1c] pl-9 pr-3 rtl:pr-9 rtl:pl-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="flex rounded-xl bg-slate-900 p-1 border border-slate-800 gap-1 overflow-x-auto no-scrollbar">
+              {[
+                { id: 'ALL', label: isAr ? 'الكل' : 'All' },
+                { id: 'PENDING', label: `${isAr ? 'قيد المراجعة' : 'Pending'} (${totalPendingSubs})` },
+                { id: 'APPROVED', label: `${isAr ? 'المعتمدة' : 'Approved'} (${totalApprovedSubs})` },
+                { id: 'REJECTED', label: `${isAr ? 'المرفوضة' : 'Rejected'} (${totalRejectedSubs})` }
+              ].map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setSubStatusFilter(f.id as typeof subStatusFilter)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition whitespace-nowrap ${
+                    subStatusFilter === f.id
+                      ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Submissions List */}
+          {filteredSubmissions.length === 0 ? (
+            <div className="rounded-2xl border border-slate-800 bg-[#070e1c] p-8 text-center text-xs text-slate-400">
+              {isAr ? 'لا توجد طلبات إثبات تطابق معايير البحث.' : 'No mission evidence submissions match your filters.'}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredSubmissions.map(sub => (
+                <div
+                  key={sub.id}
+                  className={`rounded-2xl border p-4 transition flex flex-col gap-3 ${
+                    sub.status === 'PENDING'
+                      ? 'border-amber-500/50 bg-gradient-to-br from-[#181304] to-[#070e1c] shadow-lg shadow-amber-950/30'
+                      : sub.status === 'APPROVED'
+                        ? 'border-emerald-500/30 bg-gradient-to-br from-[#06150e] to-[#070e1c]'
+                        : 'border-rose-500/30 bg-gradient-to-br from-[#160809] to-[#070e1c]'
+                  }`}
+                >
+                  {/* Top Row: Submitter & Task Title */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-800/80">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-xl overflow-hidden border border-slate-700 shrink-0 bg-slate-800">
+                        {sub.userAvatar ? (
+                          <img src={sub.userAvatar} alt={sub.username} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center text-slate-400 font-bold">
+                            {sub.username.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-white block">{sub.username}</span>
+                          <span className={`px-2 py-0.2 rounded-full text-[10px] font-bold font-tech ${
+                            sub.status === 'PENDING'
+                              ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40 animate-pulse'
+                              : sub.status === 'APPROVED'
+                                ? 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/40'
+                                : 'bg-rose-400/20 text-rose-300 border border-rose-400/40'
+                          }`}>
+                            {sub.status === 'PENDING'
+                              ? (isAr ? 'قيد المراجعة' : 'PENDING REVIEW')
+                              : sub.status === 'APPROVED'
+                                ? (isAr ? 'معتمدة • تم منح المكافأة' : 'APPROVED & CREDITED')
+                                : (isAr ? 'مرفوضة' : 'REJECTED')}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-mono mt-0.5">
+                          <span>{formatBnbAddress(sub.userAddress)}</span>
+                          <a
+                            href={getBscScanUrl('address', sub.userAddress)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-cyan-400 hover:text-cyan-300 inline-flex items-center"
+                            title="BscScan"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center sm:flex-col sm:items-end justify-between text-right">
+                      <span className="text-xs font-bold text-cyan-300 bg-cyan-950/80 px-2.5 py-1 rounded-xl border border-cyan-500/30 font-tech">
+                        +{sub.reward.toFixed(2)} FAI
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-tech mt-1">
+                        {sub.submittedAt}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Task Subject */}
+                  <div className="text-xs font-bold text-white flex items-center gap-2">
+                    <CheckSquare className="h-4 w-4 text-cyan-400 shrink-0" />
+                    <span>{isAr ? 'المهمة المستهدفة:' : 'Target Mission:'} <span className="text-cyan-300 font-semibold">{sub.taskTitle}</span></span>
+                  </div>
+
+                  {/* Evidence Display (Text & Screenshot) */}
+                  <div className="rounded-xl border border-slate-800 bg-[#060c18] p-3 space-y-2.5">
+                    <span className="text-[10px] font-tech text-slate-400 uppercase tracking-wider block">
+                      {isAr ? 'الأدلة والإثباتات المقدمة من المستخدم:' : 'Submitted User Evidence:'}
+                    </span>
+
+                    {sub.evidenceNote && (
+                      <p className="text-xs text-slate-200 leading-relaxed font-sans bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80">
+                        "{sub.evidenceNote}"
+                      </p>
+                    )}
+
+                    {sub.evidenceImage ? (
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-slate-400 font-tech block">
+                          {isAr ? 'لقطة الشاشة المرفقة (انقر لتكبير الصورة):' : 'Attached Screenshot (Click to enlarge):'}
+                        </span>
+                        <div
+                          onClick={() => setSelectedProofImage(sub.evidenceImage!)}
+                          className="group relative inline-block rounded-xl overflow-hidden border border-cyan-500/40 cursor-pointer bg-slate-950 max-w-xs"
+                        >
+                          <img
+                            src={sub.evidenceImage}
+                            alt="Proof evidence"
+                            className="h-28 w-auto object-cover transition group-hover:scale-105"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-xs font-bold gap-1">
+                            <Eye className="h-4 w-4" />
+                            <span>{isAr ? 'معاينة بالحجم الكامل' : 'View Full Image'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-500 italic block">
+                        {isAr ? '(لم يتم إرفاق لقطة شاشة، تم تقديم إثبات نصي)' : '(No screenshot uploaded, text proof only)'}
+                      </span>
+                    )}
+
+                    {/* Rejection notice if rejected */}
+                    {sub.status === 'REJECTED' && sub.rejectionReason && (
+                      <div className="rounded-lg bg-rose-950/40 border border-rose-500/30 p-2.5 text-xs text-rose-300">
+                        <strong>{isAr ? 'سبب الرفض:' : 'Rejection Reason:'}</strong> {sub.rejectionReason}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions Bar */}
+                  <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800/60">
+                    <span className="text-[11px] text-slate-500 font-tech">
+                      ID: {sub.id}
+                    </span>
+
+                    {sub.status === 'PENDING' ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOpenRejectModal(sub)}
+                          className="flex items-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-950/40 px-3.5 py-2 text-xs font-bold text-rose-300 hover:bg-rose-900/60 transition active:scale-95"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          <span>{isAr ? 'رفض الأدلة' : 'Reject Proof'}</span>
+                        </button>
+                        <button
+                          onClick={() => handleApproveSubmission(sub.id)}
+                          className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-xs font-bold text-slate-950 shadow-md shadow-emerald-500/20 hover:from-emerald-400 hover:to-teal-400 transition active:scale-95"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          <span>{isAr ? 'الموافقة واعتماد النقاط (+FAI)' : 'Approve & Award Points'}</span>
+                        </button>
+                      </div>
+                    ) : sub.status === 'APPROVED' ? (
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 font-tech">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>{isAr ? 'تم تحويل النقاط لرصيد المستخدم' : 'Points Credited to User Balance'}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-rose-400 font-tech">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>{isAr ? 'تم رفض الإثبات' : 'Evidence Rejected'}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1826,6 +2172,122 @@ export const AdminPage: React.FC = () => {
                   className="flex-1 rounded-xl bg-cyan-500 hover:bg-cyan-400 py-2 text-xs font-bold text-slate-950"
                 >
                   {isAr ? 'حفظ الرصيد' : 'Save Balance'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          MODAL 6: SCREENSHOT EVIDENCE LIGHTBOX
+          ===================================================================== */}
+      {selectedProofImage && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
+          onClick={() => setSelectedProofImage(null)}
+        >
+          <div 
+            className="relative max-w-3xl w-full rounded-2xl overflow-hidden border border-cyan-500/40 bg-slate-950 p-2 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-2 mb-2 border-b border-slate-800">
+              <span className="text-xs font-bold text-white flex items-center gap-2">
+                <Eye className="h-4 w-4 text-cyan-400" />
+                <span>{isAr ? 'معاينة إثبات المهمة (لقطة الشاشة)' : 'Mission Evidence Preview'}</span>
+              </span>
+              <button
+                onClick={() => setSelectedProofImage(null)}
+                className="rounded-full bg-slate-800 p-1.5 text-slate-300 hover:text-white transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <img 
+              src={selectedProofImage} 
+              alt="Submitted Evidence" 
+              className="max-h-[75vh] w-full object-contain rounded-xl mx-auto"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          MODAL 7: REJECT TASK EVIDENCE WITH REASON
+          ===================================================================== */}
+      {rejectingSubmission && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
+          onClick={() => setRejectingSubmission(null)}
+        >
+          <div 
+            className="w-full max-w-md rounded-3xl border border-rose-500/40 bg-[#140b0d] p-5 shadow-2xl space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-rose-500/20 pb-3">
+              <div className="flex items-center gap-2 text-rose-400">
+                <AlertCircle className="h-5 w-5" />
+                <h3 className="text-sm font-bold font-display text-white">
+                  {isAr ? 'رفض إثبات المهمة' : 'Reject Mission Evidence'}
+                </h3>
+              </div>
+              <button onClick={() => setRejectingSubmission(null)} className="text-slate-400 hover:text-white">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-300 space-y-1 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+              <div><strong>{isAr ? 'المستخدم:' : 'User:'}</strong> {rejectingSubmission.username} ({formatBnbAddress(rejectingSubmission.userAddress)})</div>
+              <div><strong>{isAr ? 'المهمة:' : 'Mission:'}</strong> {rejectingSubmission.taskTitle}</div>
+            </div>
+
+            <form onSubmit={handleConfirmReject} className="space-y-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300 block">
+                  {isAr ? 'سبب الرفض (سيظهر للمستخدم):' : 'Rejection Reason (Visible to user):'}
+                </label>
+
+                {/* Quick Presets */}
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {[
+                    isAr ? 'معرف الحساب غير مطابق أو لم تتم المتابعة' : 'Handle not found or not followed',
+                    isAr ? 'لقطة الشاشة غير واضحة أو غير مكتملة' : 'Screenshot unclear or incomplete',
+                    isAr ? 'لم يتم استيفاء شروط المهمة' : 'Mission requirements not met'
+                  ].map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setRejectionReasonInput(preset)}
+                      className="text-[10px] rounded-lg bg-slate-800 border border-slate-700 px-2 py-1 text-slate-300 hover:text-white hover:border-rose-400 transition"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  rows={3}
+                  required
+                  value={rejectionReasonInput}
+                  onChange={e => setRejectionReasonInput(e.target.value)}
+                  placeholder={isAr ? 'اكتب سبب الرفض بالتفصيل...' : 'Enter rejection reason...'}
+                  className="w-full rounded-xl border border-rose-500/30 bg-slate-950 p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 resize-none leading-relaxed"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setRejectingSubmission(null)}
+                  className="flex-1 rounded-xl bg-slate-800 py-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition"
+                >
+                  {isAr ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-500 py-2.5 text-xs font-bold text-white shadow-lg shadow-rose-900/40 transition"
+                >
+                  {isAr ? 'تأكيد الرفض' : 'Confirm Rejection'}
                 </button>
               </div>
             </form>

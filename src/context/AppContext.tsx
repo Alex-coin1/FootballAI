@@ -34,6 +34,7 @@ import {
   setPendingReferrer
 } from '../services/userApi';
 import { getUserStoredPredictions, saveUserPrediction } from '../services/predictionApi';
+import { submitTaskEvidence } from '../services/adminService';
 import { translations } from '../i18n/translations';
 
 interface Toast {
@@ -62,6 +63,7 @@ interface AppContextType {
   
   // Actions
   completeTask: (taskId: string) => void;
+  submitTaskForVerification: (taskId: string, evidenceNote?: string, evidenceImage?: string) => void;
   submitPrediction: (match: Match, choice: PredictionChoice, aiChoice: PredictionChoice) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
@@ -277,6 +279,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
+  // Submit evidence for a task to Admin review
+  const submitTaskForVerification = (taskId: string, evidenceNote?: string, evidenceImage?: string) => {
+    if (!user.isWeb3Connected) {
+      showToast(
+        settings.language === 'ar'
+          ? 'يرجى ربط محفظة Web3 أولاً لإرسال إثبات المهمة!'
+          : 'Please connect your Web3 wallet first to submit mission proof!',
+        'warning'
+      );
+      openAuthModal('register');
+      return;
+    }
+
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    if (task.status === 'COMPLETED') {
+      showToast(settings.language === 'ar' ? 'المهمة مكتملة بالفعل!' : 'Mission already completed!', 'info');
+      return;
+    }
+
+    // Submit to persistent admin queue
+    submitTaskEvidence({
+      taskId: task.id,
+      taskTitle: task.title,
+      userId: user.id,
+      userAddress: user.walletAddress || '0x0000000000000000000000000000000000000000',
+      username: user.username,
+      userAvatar: user.avatarUrl,
+      reward: task.reward,
+      evidenceNote,
+      evidenceImage
+    });
+
+    // Update local task state to PENDING_VERIFICATION
+    const updatedTasks = tasks.map(t => 
+      t.id === taskId ? { ...t, status: 'PENDING_VERIFICATION' as const } : t
+    );
+    setTasks(updatedTasks);
+    saveStoredTasks(updatedTasks);
+
+    showToast(
+      settings.language === 'ar'
+        ? `تم إرسال إثبات المهمة بنجاح! طلبك قيد مراجعة واعتماد المسؤول لمنح مكافأة +${task.reward} FAI.`
+        : `Mission proof submitted! It is now awaiting admin review before +${task.reward} FAI is awarded.`,
+      'info'
+    );
+  };
+
   // Complete a Task
   const completeTask = (taskId: string) => {
     if (!user.isWeb3Connected) {
@@ -298,49 +349,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    if (task.isExternal && task.status === 'AVAILABLE') {
-      // Transition to pending verification
-      const updatedTasks = tasks.map(t => 
-        t.id === taskId ? { ...t, status: 'PENDING_VERIFICATION' as const } : t
+    if (task.status === 'PENDING_VERIFICATION') {
+      showToast(
+        settings.language === 'ar'
+          ? 'المهمة قيد مراجعة واعتماد المسؤول حالياً.'
+          : 'This mission is currently under review by Admin.',
+        'info'
       );
-      setTasks(updatedTasks);
-      saveStoredTasks(updatedTasks);
-      showToast(`Mission "${task.title}" is now pending verification!`, 'info');
+      return;
+    }
 
-      // Automatically simulate verification after 3 seconds for smooth guest testing
-      setTimeout(() => {
-        const finalTasks = getStoredTasks().map(t => 
-          t.id === taskId ? { ...t, status: 'COMPLETED' as const } : t
-        );
-        setTasks(finalTasks);
-        saveStoredTasks(finalTasks);
-
-        setUser(prevUser => {
-          const newUser = {
-            ...prevUser,
-            faiBalance: Number((prevUser.faiBalance + task.reward).toFixed(4)),
-            xp: prevUser.xp + 25
-          };
-          saveStoredUser(newUser);
-          return newUser;
-        });
-
-        // Add activity
-        const newAct: ActivityItem = {
-          id: 'act_' + Date.now(),
-          type: 'task',
-          title: `Mission: ${task.title}`,
-          amount: task.reward,
-          timestamp: 'Just now'
-        };
-        setActivities(prev => {
-          const upd = [newAct, ...prev];
-          saveStoredActivities(upd);
-          return upd;
-        });
-
-        showToast(`Verified! Reward +${task.reward} FAI added to your balance.`, 'success');
-      }, 3000);
+    if (task.isExternal || task.category === 'social') {
+      // Transition to pending verification through admin review
+      submitTaskForVerification(taskId, 'Task action completed by user');
       return;
     }
 
@@ -540,6 +561,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dailyCountdownText,
         claimDailyReward,
         completeTask,
+        submitTaskForVerification,
         submitPrediction,
         markNotificationRead,
         markAllNotificationsRead,

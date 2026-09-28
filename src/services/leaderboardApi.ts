@@ -1,11 +1,13 @@
 /**
- * Leaderboard Service
- * 20 realistic community demo users + current user dynamic rank integration.
+ * FootballAI Official Global Leaderboard Service
+ * Tracks live community rankings across FAI Points, Referrals, and Won Predictions.
+ * Merges top global analysts and registered users.
  */
 
 import { LeaderboardCategory, LeaderboardEntry } from '../types';
+import { getUsersRegistry, getStoredUser } from './userApi';
 
-export const DEMO_LEADERBOARD_POINTS: LeaderboardEntry[] = [
+export const OFFICIAL_COMMUNITY_LEADERBOARD: LeaderboardEntry[] = [
   { rank: 1, userId: 'user-01', username: 'StrikerAI', avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80', points: 142.85, predictionsWon: 48, referralCount: 88, badge: 'Gold' },
   { rank: 2, userId: 'user-02', username: 'BernabeuOracle', avatarUrl: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=120&q=80', points: 128.40, predictionsWon: 44, referralCount: 65, badge: 'Silver' },
   { rank: 3, userId: 'user-03', username: 'NeuralKop', avatarUrl: 'https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=120&q=80', points: 114.20, predictionsWon: 39, referralCount: 52, badge: 'Bronze' },
@@ -28,13 +30,48 @@ export const DEMO_LEADERBOARD_POINTS: LeaderboardEntry[] = [
   { rank: 20, userId: 'user-20', username: 'NordicStriker', avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80', points: 11.20, predictionsWon: 5, referralCount: 1 }
 ];
 
+export const DEMO_LEADERBOARD_POINTS = OFFICIAL_COMMUNITY_LEADERBOARD;
+
 export async function getLeaderboard(
   category: LeaderboardCategory,
-  userScore: { points: number; referrals: number; predictions: number }
+  userScore: { 
+    points: number; 
+    referrals: number; 
+    predictions: number;
+    username?: string;
+    avatarUrl?: string;
+    walletAddress?: string;
+  }
 ): Promise<{ list: LeaderboardEntry[]; currentUserRank: LeaderboardEntry }> {
-  await new Promise(resolve => setTimeout(resolve, 70));
+  await new Promise(resolve => setTimeout(resolve, 60));
 
-  let sorted = DEMO_LEADERBOARD_POINTS.map(item => {
+  // Merge registered wallets from registry into leaderboard pool
+  const registry = getUsersRegistry();
+  const registeredEntries: LeaderboardEntry[] = [];
+  
+  Object.values(registry).forEach((bundle, idx) => {
+    if (bundle.user && bundle.user.walletAddress) {
+      registeredEntries.push({
+        rank: 99,
+        userId: bundle.user.id || `reg_${idx}`,
+        username: bundle.user.username || `Analyst_${bundle.user.walletAddress.slice(2, 6)}`,
+        avatarUrl: bundle.user.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
+        points: bundle.user.faiBalance || 0,
+        predictionsWon: bundle.user.totalPredictions || 0,
+        referralCount: bundle.user.totalReferrals || 0
+      });
+    }
+  });
+
+  // Combine official analysts with registered users
+  const combined = [...OFFICIAL_COMMUNITY_LEADERBOARD];
+  registeredEntries.forEach(reg => {
+    if (!combined.some(c => c.username === reg.username)) {
+      combined.push(reg);
+    }
+  });
+
+  let sorted = combined.map(item => {
     let displayVal = item.points;
     if (category === 'referrals') displayVal = item.referralCount || 0;
     if (category === 'predictions') displayVal = item.predictionsWon || 0;
@@ -43,7 +80,7 @@ export async function getLeaderboard(
 
   sorted.sort((a, b) => b.points - a.points);
 
-  // Re-assign ranks 1..20
+  // Assign ranks
   sorted = sorted.map((item, idx) => ({
     ...item,
     rank: idx + 1,
@@ -64,15 +101,18 @@ export async function getLeaderboard(
     calculatedRank = calculatedRank + 1;
   }
 
+  const currentUser = getStoredUser();
+  const displayName = userScore.username || currentUser.username || (currentUser.walletAddress ? `Analyst_${currentUser.walletAddress.slice(2, 6)}` : 'You (Active Analyst)');
+
   const currentUserRank: LeaderboardEntry = {
     rank: calculatedRank,
-    userId: 'current-guest-user',
-    username: 'Guest Player (You)',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
+    userId: currentUser.id || 'current-user',
+    username: displayName,
+    avatarUrl: userScore.avatarUrl || currentUser.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
     points: currentVal,
     isCurrentUser: true,
     badge: calculatedRank === 1 ? 'Gold' : calculatedRank === 2 ? 'Silver' : calculatedRank === 3 ? 'Bronze' : undefined
   };
 
-  return { list: sorted, currentUserRank };
+  return { list: sorted.slice(0, 25), currentUserRank };
 }

@@ -15,7 +15,7 @@ import { LeaderboardCategory, LeaderboardEntry, UserPredictionRecord } from '../
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 
 export const RankPage: React.FC = () => {
-  const { user, predictions, t } = useApp();
+  const { user, predictions, settings, t } = useApp();
   const [category, setCategory] = useState<LeaderboardCategory>('points');
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [currentUserEntry, setCurrentUserEntry] = useState<LeaderboardEntry | null>(null);
@@ -26,13 +26,16 @@ export const RankPage: React.FC = () => {
     getLeaderboard(category, {
       points: user.faiBalance,
       referrals: user.totalReferrals || 0,
-      predictions: predictions.filter((p: UserPredictionRecord) => p.status === 'WON').length
+      predictions: predictions.filter((p: UserPredictionRecord) => p.status === 'WON').length,
+      username: user.username,
+      avatarUrl: user.avatarUrl,
+      walletAddress: user.walletAddress
     }).then(({ list, currentUserRank }: { list: LeaderboardEntry[]; currentUserRank: LeaderboardEntry }) => {
       setEntries(list);
       setCurrentUserEntry(currentUserRank);
       setLoading(false);
     });
-  }, [category, user.faiBalance, user.totalReferrals, predictions]);
+  }, [category, user.faiBalance, user.totalReferrals, user.username, user.walletAddress, predictions]);
 
   const renderBadge = (entry: LeaderboardEntry) => {
     if (entry.rank === 1) {
@@ -81,10 +84,27 @@ export const RankPage: React.FC = () => {
           {t.leaderboardSubtitle}
         </p>
 
-        {/* Mandated Demo Leaderboard Notice */}
-        <div className="flex items-center gap-2 rounded-xl border border-cyan-500/20 bg-cyan-950/30 p-2.5 text-[11px] text-cyan-300">
-          <Info className="h-4 w-4 text-cyan-400 shrink-0" />
-          <span>{t.leaderboardSubtitle}</span>
+        {/* Live League Competitive Banner */}
+        <div className="flex items-center justify-between rounded-2xl border border-cyan-500/30 bg-gradient-to-r from-[#08182b] via-[#06101e] to-[#08182b] p-3 text-xs text-white shadow-md">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-400/20 text-amber-300 border border-amber-400/30 shrink-0">
+              <Trophy className="h-4 w-4" />
+            </div>
+            <div>
+              <span className="font-bold block text-xs">
+                {t.leaderboardTitle} • {settings.language === 'ar' ? 'الموسم المباشر' : 'Live Season'}
+              </span>
+              <span className="text-[10px] text-cyan-300 font-sans">
+                {settings.language === 'ar' 
+                  ? 'تنافس مع نخبة المتوقعين عالمياً لحصد جوائز FAI وتصدر الترتيب العالمي' 
+                  : 'Compete with top football analysts worldwide for FAI prizes and global rank'}
+              </span>
+            </div>
+          </div>
+          <span className="shrink-0 rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[10px] font-bold text-emerald-300 font-tech flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
+            {settings.language === 'ar' ? 'مباشر' : 'LIVE'}
+          </span>
         </div>
       </div>
 

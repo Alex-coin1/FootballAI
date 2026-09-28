@@ -89,11 +89,8 @@ export const NewsDetailModal: React.FC = () => {
             "{article.summary}"
           </p>
 
-          <div className="text-sm text-slate-300 leading-relaxed font-sans space-y-3">
+          <div className="text-sm text-slate-300 leading-relaxed font-sans space-y-3 whitespace-pre-line">
             <p>{article.content}</p>
-            <p>
-              {isAr ? 'من خلال دمج التتبع الرياضي عالي الدقة مع الحسابات الاحتمالية اللحظية، يقوم محرك FootballAI بتقييم ديناميكيات الملعب وشبكات التمرير التكتيكية وقوة التنظيم الدفاعي لتقديم رؤى دقيقة للمشجعين المعاصرين.' : 'By combining high-resolution tracking telemetry with real-time probabilistic calculations, FootballAI\'s engine evaluates pitch dynamics, tactical passing networks, and defensive shape resilience to deliver accurate insights for modern supporters.'}
-            </p>
           </div>
 
           {/* Tags */}

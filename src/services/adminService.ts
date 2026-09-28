@@ -9,9 +9,21 @@
  * - Wallet & Users Inspector: View all registered users, balances, deposit addresses, referrals
  */
 
-import { NFTCard, User, Task } from '../types';
+import { NFTCard, User, Task, TaskSubmission, Notification, ActivityItem } from '../types';
 import { ENRICHED_NFT_CARDS } from './nftApi';
-import { getUsersRegistry, saveUsersRegistry, getStoredUser, saveStoredUser, DEFAULT_TASKS } from './userApi';
+import { 
+  getUsersRegistry, 
+  saveUsersRegistry, 
+  getStoredUser, 
+  saveStoredUser, 
+  DEFAULT_TASKS,
+  getStoredTasks,
+  saveStoredTasks,
+  getStoredNotifications,
+  saveStoredNotifications,
+  getStoredActivities,
+  saveStoredActivities
+} from './userApi';
 
 export const ADMIN_WALLET_ADDRESS = '0xf609ca4b709cae5304547a1345a29d31565a19a5'.toLowerCase();
 
@@ -343,4 +355,282 @@ export function updateTaskReward(taskId: string, newReward: number): void {
     saveAllManagedTasks(allTasks);
   }
 }
+
+// ============================================================================
+// TASK EVIDENCE VERIFICATION (Admin Approval & Rejection Workflow)
+// ============================================================================
+const STORAGE_KEY_TASK_SUBMISSIONS = 'footballai_task_submissions';
+
+export const INITIAL_SAMPLE_SUBMISSIONS: TaskSubmission[] = [
+  {
+    id: 'sub_sample_101',
+    taskId: 'task-2',
+    taskTitle: 'Follow @FootballAIHQ on X',
+    userId: 'user_0x4b8a',
+    userAddress: '0x4b8a78216cb03d2994e0193bbcf3924765a08912',
+    username: 'TacticalScout',
+    userAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80',
+    reward: 0.20,
+    submittedAt: '12 minutes ago',
+    evidenceNote: 'Followed with handle @TacticalScoutHQ and retweeted the pinned launch announcement.',
+    evidenceImage: 'https://images.unsplash.com/photo-1611605698335-8b1569810432?auto=format&fit=crop&w=600&q=80',
+    status: 'PENDING'
+  },
+  {
+    id: 'sub_sample_102',
+    taskId: 'task-3',
+    taskTitle: 'Share FootballAI with Friends',
+    userId: 'user_0x91d2',
+    userAddress: '0x91d227a840c4f826315582c9748b61e204cba719',
+    username: 'StrikerAI',
+    userAvatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=120&q=80',
+    reward: 0.15,
+    submittedAt: '35 minutes ago',
+    evidenceNote: 'Shared in football Telegram channel (1,400 members) with my referral code.',
+    evidenceImage: 'https://images.unsplash.com/photo-1577563908411-5077b6dc7624?auto=format&fit=crop&w=600&q=80',
+    status: 'PENDING'
+  },
+  {
+    id: 'sub_sample_103',
+    taskId: 'task-5',
+    taskTitle: 'Complete 3 AI Match Predictions',
+    userId: 'user_0x78fe',
+    userAddress: '0x78fe98c19904981121d55e378f82873c915f0120',
+    username: 'BernabeuOracle',
+    userAvatar: 'https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=120&q=80',
+    reward: 0.10,
+    submittedAt: '2 hours ago',
+    evidenceNote: 'Predicted UCL matches: Real Madrid vs Man City, Arsenal vs Bayern, PSG vs Barca.',
+    status: 'APPROVED',
+    reviewedAt: '1 hour ago'
+  }
+];
+
+/**
+ * Get all task submissions
+ */
+export function getTaskSubmissions(): TaskSubmission[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_TASK_SUBMISSIONS);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error('Failed to parse task submissions', e);
+  }
+  // Initialize with samples if first load
+  saveTaskSubmissions(INITIAL_SAMPLE_SUBMISSIONS);
+  return INITIAL_SAMPLE_SUBMISSIONS;
+}
+
+/**
+ * Save task submissions
+ */
+export function saveTaskSubmissions(submissions: TaskSubmission[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_TASK_SUBMISSIONS, JSON.stringify(submissions));
+  } catch (e) {
+    console.error('Failed to save task submissions', e);
+  }
+}
+
+/**
+ * User submits evidence for a task
+ */
+export function submitTaskEvidence(params: {
+  taskId: string;
+  taskTitle: string;
+  userId: string;
+  userAddress: string;
+  username: string;
+  userAvatar?: string;
+  reward: number;
+  evidenceNote?: string;
+  evidenceImage?: string;
+}): TaskSubmission {
+  const submissions = getTaskSubmissions();
+  
+  // Check if there is an existing pending submission for this task by this user
+  const existingIdx = submissions.findIndex(
+    s => s.taskId === params.taskId && 
+    (s.userId === params.userId || s.userAddress.toLowerCase() === params.userAddress.toLowerCase()) &&
+    s.status === 'PENDING'
+  );
+
+  const newSubmission: TaskSubmission = {
+    id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    taskId: params.taskId,
+    taskTitle: params.taskTitle,
+    userId: params.userId,
+    userAddress: params.userAddress.toLowerCase(),
+    username: params.username,
+    userAvatar: params.userAvatar,
+    reward: params.reward,
+    submittedAt: 'Just now',
+    evidenceNote: params.evidenceNote?.trim(),
+    evidenceImage: params.evidenceImage,
+    status: 'PENDING'
+  };
+
+  if (existingIdx >= 0) {
+    submissions[existingIdx] = newSubmission;
+  } else {
+    submissions.unshift(newSubmission);
+  }
+
+  saveTaskSubmissions(submissions);
+  return newSubmission;
+}
+
+/**
+ * Admin approves a task submission and automatically awards FAI points
+ */
+export function approveTaskSubmission(submissionId: string): { 
+  success: boolean; 
+  submission?: TaskSubmission; 
+  message?: string 
+} {
+  const submissions = getTaskSubmissions();
+  const submission = submissions.find(s => s.id === submissionId);
+
+  if (!submission) {
+    return { success: false, message: 'Submission not found' };
+  }
+
+  if (submission.status === 'APPROVED') {
+    return { success: false, message: 'Submission has already been approved' };
+  }
+
+  // Update submission status
+  submission.status = 'APPROVED';
+  submission.reviewedAt = 'Just now';
+  delete submission.rejectionReason;
+  saveTaskSubmissions(submissions);
+
+  const normAddress = submission.userAddress.toLowerCase().trim();
+
+  // 1. Credit reward to User Registry
+  const registry = getUsersRegistry();
+  const userKey = Object.keys(registry).find(
+    k => registry[k].user.walletAddress?.toLowerCase() === normAddress
+  );
+
+  if (userKey) {
+    registry[userKey].user.faiBalance = Number(
+      ((registry[userKey].user.faiBalance || 0) + submission.reward).toFixed(4)
+    );
+    registry[userKey].user.xp = (registry[userKey].user.xp || 0) + 25;
+    
+    // Mark task as completed in user's bundle
+    if (registry[userKey].tasks) {
+      registry[userKey].tasks = registry[userKey].tasks.map(tk => 
+        tk.id === submission.taskId ? { ...tk, status: 'COMPLETED' as const } : tk
+      );
+    }
+    saveUsersRegistry(registry);
+  }
+
+  // 2. If the submitter is the currently logged-in user in localStorage, update current user too
+  const currentUser = getStoredUser();
+  if (currentUser.walletAddress?.toLowerCase() === normAddress) {
+    currentUser.faiBalance = Number(((currentUser.faiBalance || 0) + submission.reward).toFixed(4));
+    currentUser.xp = (currentUser.xp || 0) + 25;
+    saveStoredUser(currentUser);
+
+    // Update stored tasks
+    const currentTasks = getStoredTasks();
+    const updatedTasks = currentTasks.map(tk => 
+      tk.id === submission.taskId ? { ...tk, status: 'COMPLETED' as const } : tk
+    );
+    saveStoredTasks(updatedTasks);
+
+    // Add activity
+    const newAct: ActivityItem = {
+      id: 'act_' + Date.now(),
+      type: 'task',
+      title: `Verified Mission: ${submission.taskTitle}`,
+      amount: submission.reward,
+      timestamp: 'Just now'
+    };
+    saveStoredActivities([newAct, ...getStoredActivities()]);
+
+    // Add notification
+    const newNotif: Notification = {
+      id: 'notif_sub_' + Date.now(),
+      type: 'MISSION_COMPLETED',
+      title: 'Mission Evidence Approved! 🎉',
+      message: `Your proof for "${submission.taskTitle}" was verified by Admin. +${submission.reward} FAI has been added to your balance!`,
+      timestamp: 'Just now',
+      isRead: false,
+      iconType: 'task',
+      linkTab: 'wallet'
+    };
+    saveStoredNotifications([newNotif, ...getStoredNotifications()]);
+  }
+
+  return { success: true, submission };
+}
+
+/**
+ * Admin rejects a task submission with an optional reason
+ */
+export function rejectTaskSubmission(
+  submissionId: string, 
+  reason?: string
+): { 
+  success: boolean; 
+  submission?: TaskSubmission 
+} {
+  const submissions = getTaskSubmissions();
+  const submission = submissions.find(s => s.id === submissionId);
+
+  if (!submission) {
+    return { success: false };
+  }
+
+  submission.status = 'REJECTED';
+  submission.reviewedAt = 'Just now';
+  submission.rejectionReason = reason?.trim() || 'Evidence provided was insufficient or could not be verified.';
+  saveTaskSubmissions(submissions);
+
+  const normAddress = submission.userAddress.toLowerCase().trim();
+
+  // Reset task back to AVAILABLE in registry
+  const registry = getUsersRegistry();
+  const userKey = Object.keys(registry).find(
+    k => registry[k].user.walletAddress?.toLowerCase() === normAddress
+  );
+  if (userKey && registry[userKey].tasks) {
+    registry[userKey].tasks = registry[userKey].tasks.map(tk => 
+      tk.id === submission.taskId ? { ...tk, status: 'AVAILABLE' as const } : tk
+    );
+    saveUsersRegistry(registry);
+  }
+
+  // Reset task in current user if matching
+  const currentUser = getStoredUser();
+  if (currentUser.walletAddress?.toLowerCase() === normAddress) {
+    const currentTasks = getStoredTasks();
+    const updatedTasks = currentTasks.map(tk => 
+      tk.id === submission.taskId ? { ...tk, status: 'AVAILABLE' as const } : tk
+    );
+    saveStoredTasks(updatedTasks);
+
+    // Send notification
+    const newNotif: Notification = {
+      id: 'notif_rej_' + Date.now(),
+      type: 'MISSION_COMPLETED',
+      title: 'Mission Verification Update',
+      message: `Your proof for "${submission.taskTitle}" was not approved: ${submission.rejectionReason}. You can re-submit valid evidence.`,
+      timestamp: 'Just now',
+      isRead: false,
+      iconType: 'task',
+      linkTab: 'tasks'
+    };
+    saveStoredNotifications([newNotif, ...getStoredNotifications()]);
+  }
+
+  return { success: true, submission };
+}
+
 

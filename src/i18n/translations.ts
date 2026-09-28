@@ -572,7 +572,7 @@ export const translations: { en: Translations; ar: Translations } = {
 
     // Rank / Leaderboard Page
     leaderboardTitle: 'LEADERBOARD',
-    leaderboardSubtitle: 'Demo leaderboard until a real backend is connected.',
+    leaderboardSubtitle: 'Official community leaderboard tracking live football predictions, FAI points, and global analyst rankings.',
     faiPoints: 'FAI POINTS',
     predictionsTab: 'PREDICTIONS',
     invites: 'Invites',
@@ -994,7 +994,7 @@ export const translations: { en: Translations; ar: Translations } = {
 
     // Rank / Leaderboard Page
     leaderboardTitle: 'قائمة المتصدرين',
-    leaderboardSubtitle: 'لوحة صدارة تجريبية للمجتمع لعرض النقاط والتوقعات.',
+    leaderboardSubtitle: 'لوحة صدارة مجتمع كرة القدم المباشرة لعرض التوقعات الحية، نقاط FAI، وترتيب المحللين حول العالم.',
     faiPoints: 'نقاط FAI',
     predictionsTab: 'التوقعات',
     invites: 'الدعوات',

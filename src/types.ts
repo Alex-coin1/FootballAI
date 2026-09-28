@@ -201,6 +201,23 @@ export interface NewsItem {
 
 export type TaskStatus = 'AVAILABLE' | 'PENDING_VERIFICATION' | 'COMPLETED';
 
+export interface TaskSubmission {
+  id: string;
+  taskId: string;
+  taskTitle: string;
+  userId: string;
+  userAddress: string;
+  username: string;
+  userAvatar?: string;
+  reward: number; // in FAI
+  submittedAt: string;
+  evidenceNote?: string;
+  evidenceImage?: string; // base64 or URL
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewedAt?: string;
+  rejectionReason?: string;
+}
+
 export interface Task {
   id: string;
   title: string;
