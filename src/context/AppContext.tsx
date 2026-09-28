@@ -221,17 +221,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Claim Daily FAI
   const claimDailyReward = (): boolean => {
+    if (!user.isWeb3Connected) {
+      showToast(
+        settings.language === 'ar'
+          ? 'يرجى ربط محفظة Web3 (شبكة BNB) أولاً لإنشاء حسابك وتفعيل تعدين FAI!'
+          : 'Please connect your Web3 wallet (BNB Chain) first to create your account and activate FAI mining!',
+        'warning'
+      );
+      openAuthModal('register');
+      return false;
+    }
+
     if (!canClaimDaily) {
       showToast(`${t.nextClaimAvailableIn} ${dailyCountdownText}`, 'warning');
       return false;
     }
 
-    const currentStreak = user.streakDays || 1;
-    const isDay7 = currentStreak % 7 === 0;
+    const currentStreak = user.streakDays || 0;
+    const isDay7 = (currentStreak + 1) % 7 === 0;
     const rewardAmount = isDay7 ? 0.25 : 0.05;
 
     const nextStreak = currentStreak >= 7 ? 1 : currentStreak + 1;
-    const nextClaimedDays = currentStreak >= 7 ? [1] : [...(user.claimedDays || [1]), nextStreak];
+    const nextClaimedDays = currentStreak >= 7 ? [1] : [...(user.claimedDays || []), nextStreak];
 
     const updatedUser: User = {
       ...user,
@@ -268,6 +279,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Complete a Task
   const completeTask = (taskId: string) => {
+    if (!user.isWeb3Connected) {
+      showToast(
+        settings.language === 'ar'
+          ? 'يرجى ربط محفظة Web3 أولاً لحفظ إنجاز المهام واستلام مكافآت FAI!'
+          : 'Please connect your Web3 wallet first to complete missions and earn FAI rewards!',
+        'warning'
+      );
+      openAuthModal('register');
+      return;
+    }
+
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
 
@@ -353,6 +375,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Submit AI Prediction
   const submitPrediction = (match: Match, choice: PredictionChoice, aiChoice: PredictionChoice) => {
+    if (!user.isWeb3Connected) {
+      showToast(
+        settings.language === 'ar'
+          ? 'يرجى ربط محفظة Web3 للمشاركة في التوقعات وحفظ سجلك التحليلي!'
+          : 'Please connect your Web3 wallet first to participate in predictions and record stats!',
+        'warning'
+      );
+      openAuthModal('register');
+      return;
+    }
+
     const record: UserPredictionRecord = {
       id: 'pred_' + Date.now(),
       matchId: match.id,

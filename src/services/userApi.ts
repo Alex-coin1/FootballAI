@@ -26,25 +26,25 @@ export interface UserDataBundle {
 }
 
 const DEFAULT_USER: User = {
-  id: 'guest_fai_001',
+  id: 'guest_unlinked',
   username: 'Guest Player',
   avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&q=80',
   level: 1,
-  levelTitle: 'Beginner Analyst',
-  xp: 45,
+  levelTitle: 'Unlinked',
+  xp: 0,
   xpNextLevel: 100,
-  faiBalance: 0.15, // Starting demo pilot balance
-  streakDays: 1,
+  faiBalance: 0, // Clean 0 starting balance - mining unlocks upon linking wallet
+  streakDays: 0,
   lastClaimTimestamp: null,
-  totalPredictions: 3,
-  wonPredictions: 2,
+  totalPredictions: 0,
+  wonPredictions: 0,
   totalReferrals: 0,
-  referralCode: 'FAI2026',
+  referralCode: '',
   joinedDate: 'September 2026',
-  claimedDays: [1], // Day 1 claimed
+  claimedDays: [],
   isWeb3Connected: false,
   walletAddress: undefined,
-  bnbDepositAddress: '0x71C8F4a29B56e9c90C88De541a7dE3C8451839A4',
+  bnbDepositAddress: undefined,
   bnbChainId: 56,
   depositHistory: []
 };
@@ -55,7 +55,7 @@ export const DEFAULT_TASKS: Task[] = [
     title: 'Daily Check-in',
     description: 'Claim your daily FAI pilot points and maintain your active streak.',
     reward: 0.05,
-    status: 'COMPLETED',
+    status: 'AVAILABLE',
     category: 'daily'
   },
   {
@@ -82,7 +82,7 @@ export const DEFAULT_TASKS: Task[] = [
   {
     id: 'task-4',
     title: 'Invite a Friend',
-    description: 'Share your unique referral code FAI2026 with football enthusiasts.',
+    description: 'Share your unique referral link with football enthusiasts.',
     reward: 0.10,
     status: 'AVAILABLE',
     category: 'social',
@@ -93,7 +93,7 @@ export const DEFAULT_TASKS: Task[] = [
     title: 'Complete 3 Predictions',
     description: 'Submit predictions on any 3 upcoming football matches.',
     reward: 0.15,
-    status: 'COMPLETED',
+    status: 'AVAILABLE',
     category: 'prediction'
   },
   {
@@ -183,53 +183,18 @@ export const DEFAULT_ACHIEVEMENTS: Achievement[] = [
 
 export const DEFAULT_NOTIFICATIONS: Notification[] = [
   {
-    id: 'notif-1',
+    id: 'notif-welcome',
     type: 'DAILY_REWARD',
-    title: 'Daily Check-in Ready',
-    message: 'Your +0.05 FAI daily pilot bonus is ready to claim.',
+    title: 'Welcome to FootballAI',
+    message: 'Link your Web3 wallet via BNB Chain to create your account, activate daily mining, and unlock predictions.',
     timestamp: 'Just now',
     isRead: false,
     iconType: 'sparkles',
-    linkTab: 'home'
-  },
-  {
-    id: 'notif-2',
-    type: 'MATCH_AVAILABLE',
-    title: 'Featured Match Today',
-    message: 'Real Madrid vs Manchester City kickoff at 20:00 UTC. View AI probabilities.',
-    timestamp: '1 hour ago',
-    isRead: false,
-    iconType: 'trophy',
-    linkTab: 'matches'
-  },
-  {
-    id: 'notif-3',
-    type: 'PREDICTION_SUBMITTED',
-    title: 'Prediction Recorded',
-    message: 'Your forecast on Inter Milan vs Juventus was settled as a win (+0.15 FAI).',
-    timestamp: 'Yesterday',
-    isRead: true,
-    iconType: 'check-circle',
-    linkTab: 'predict'
-  },
-  {
-    id: 'notif-4',
-    type: 'ACHIEVEMENT_UNLOCKED',
-    title: 'Achievement Unlocked',
-    message: 'You earned "First Check-in" badge and leveled up!',
-    timestamp: 'Yesterday',
-    isRead: true,
-    iconType: 'award',
-    linkTab: 'profile'
+    linkTab: 'wallet'
   }
 ];
 
-export const DEFAULT_ACTIVITIES: ActivityItem[] = [
-  { id: 'act-1', type: 'claim', title: 'Daily Check-in Bonus', amount: 0.05, timestamp: 'Today' },
-  { id: 'act-2', type: 'prediction', title: 'Prediction Win: Inter vs Juventus', amount: 0.15, timestamp: 'Yesterday' },
-  { id: 'act-3', type: 'task', title: 'Mission: Complete 3 Predictions', amount: 0.15, timestamp: 'Yesterday' },
-  { id: 'act-4', type: 'claim', title: 'Welcome Community Pilot Grant', amount: 0.10, timestamp: '2 days ago' }
-];
+export const DEFAULT_ACTIVITIES: ActivityItem[] = [];
 
 export const REFERRAL_TIERS = [
   { referralsRequired: 1, rewardBonus: 0.20, perks: 'Unlock Community Scout Badge', completed: false },
@@ -244,7 +209,14 @@ export const REFERRAL_TIERS = [
 export function getStoredUser(): User {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.USER);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Migrate away from old mock guest user
+      if (!parsed.isWeb3Connected || parsed.id === 'guest_fai_001') {
+        return DEFAULT_USER;
+      }
+      return parsed;
+    }
   } catch (e) {
     console.error('Failed to load user from localStorage', e);
   }
@@ -421,10 +393,10 @@ export function registerUserWithBnbWallet(params: {
     avatarUrl: params.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&q=80',
     level: 1,
     levelTitle: 'BNB Web3 Analyst',
-    xp: 60,
+    xp: 0,
     xpNextLevel: 100,
-    faiBalance: 0.25, // Starting grant + Web3 registration bonus
-    streakDays: 1,
+    faiBalance: 0, // Clean 0 starting balance - user begins mining directly
+    streakDays: 0,
     lastClaimTimestamp: null,
     totalPredictions: 0,
     wonPredictions: 0,
@@ -432,7 +404,7 @@ export function registerUserWithBnbWallet(params: {
     referralCode: generatedRefCode,
     referralLink: refLink,
     joinedDate: new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
-    claimedDays: [1],
+    claimedDays: [],
     
     // Web3 & BNB Chain
     isWeb3Connected: true,
@@ -447,15 +419,8 @@ export function registerUserWithBnbWallet(params: {
     {
       id: `act_${Date.now()}_1`,
       type: 'claim',
-      title: 'Web3 Wallet Registration Bonus (BNB Chain)',
-      amount: 0.20,
-      timestamp: 'Just now'
-    },
-    {
-      id: `act_${Date.now()}_2`,
-      type: 'claim',
-      title: 'BNB Chain Deposit Address Linked',
-      amount: 0.05,
+      title: 'Web3 Wallet Connected (BNB Smart Chain)',
+      amount: 0,
       timestamp: 'Just now'
     }
   ];

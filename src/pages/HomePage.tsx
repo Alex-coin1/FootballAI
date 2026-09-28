@@ -12,7 +12,9 @@ import {
   AlertCircle,
   ArrowUpRight,
   Layers,
-  CheckCircle2
+  CheckCircle2,
+  Wallet,
+  Coins
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { getFeaturedMatch } from '../services/footballApi';
@@ -35,11 +37,13 @@ export const HomePage: React.FC = () => {
     claimDailyReward, 
     setCurrentTab, 
     setSelectedMatch,
+    openAuthModal,
     activities,
     settings,
     t 
   } = useApp();
 
+  const isAr = settings.language === 'ar';
   const [featuredMatch, setFeaturedMatch] = useState<Match | null>(null);
 
   useEffect(() => {
@@ -53,6 +57,40 @@ export const HomePage: React.FC = () => {
 
   return (
     <div className="space-y-5 pb-8 animate-in fade-in duration-200">
+      {/* 0. WEB3 WALLET ACTIVATION GATE (Shown when wallet is not connected) */}
+      {!user.isWeb3Connected && (
+        <section className="relative overflow-hidden rounded-3xl border border-amber-500/50 bg-gradient-to-br from-[#161005] via-[#0a1120] to-[#040813] p-5 sm:p-6 shadow-2xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="flex h-2 w-2 rounded-full bg-amber-400 animate-ping" />
+                <span className="text-[11px] font-tech font-bold uppercase tracking-wider text-amber-400">
+                  {isAr ? 'الخطوة الأولى: ربط محفظة Web3' : 'Step 1: Link Web3 Wallet'}
+                </span>
+                <span className="rounded bg-amber-500/10 px-2 py-0.5 text-[10px] font-tech text-amber-300 border border-amber-500/30">
+                  BNB SMART CHAIN
+                </span>
+              </div>
+              <h2 className="text-base sm:text-lg font-bold font-display text-white">
+                {isAr ? 'اربط محفظتك لإنشاء حسابك وتفعيل التعدين ورابط الإحالة' : 'Link Web3 Wallet to Create Account & Enable Mining'}
+              </h2>
+              <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+                {isAr
+                  ? 'يتطلب استخدام منصة FootballAI ربط محفظة BEP-20 على شبكة BNB. يمنحك ذلك عنوان إيداع مخصص، ورابط إحالة فريد، والبدء بتعدين نقاط FAI يومياً.'
+                  : 'FootballAI requires linking a BEP-20 wallet on BNB Chain. This generates your unique referral link, designated deposit address, and activates daily 24h FAI mining.'}
+              </p>
+            </div>
+
+            <button
+              onClick={() => openAuthModal('register')}
+              className="shrink-0 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 px-5 py-3 text-xs font-bold text-slate-950 shadow-lg shadow-amber-500/20 hover:from-amber-300 hover:to-amber-400 transition active:scale-95"
+            >
+              <Wallet className="h-4 w-4" />
+              <span>{isAr ? 'ربط محفظة BNB والبدء بالتعدين' : 'Connect BNB Wallet & Start Mining'}</span>
+            </button>
+          </div>
+        </section>
+      )}
       {/* 1. BALANCE CARD */}
       <section 
         id="home-balance-card"

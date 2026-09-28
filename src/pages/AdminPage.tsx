@@ -13,12 +13,20 @@ import {
   Radio
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { getUsersRegistry } from '../services/userApi';
 
 export const AdminPage: React.FC = () => {
-  const { user, showToast, claimDailyReward, t, settings } = useApp();
+  const { user, showToast, t, settings } = useApp();
   const [modelLatency, setModelLatency] = useState(42);
   const [feedStatus, setFeedStatus] = useState<'HEALTHY' | 'SYNCING'>('HEALTHY');
   const isAr = settings.language === 'ar';
+
+  const registry = getUsersRegistry();
+  const registeredWalletsCount = Object.keys(registry).length + (user.isWeb3Connected ? 1 : 0);
+  const totalFaiDistributed = Object.values(registry).reduce(
+    (sum, b) => sum + (b.user?.faiBalance || 0),
+    user.isWeb3Connected ? user.faiBalance : 0
+  );
 
   const handleSimulateSync = () => {
     setFeedStatus('SYNCING');
@@ -63,12 +71,12 @@ export const AdminPage: React.FC = () => {
         <div className="rounded-2xl border border-slate-800 bg-[#070e1c] p-3.5">
           <div className="flex items-center gap-1.5 text-xs text-slate-400">
             <Users className="h-3.5 w-3.5 text-cyan-400" />
-            <span>{t.totalCommunity}</span>
+            <span>{isAr ? 'المحافظ المسجلة' : 'Registered Wallets'}</span>
           </div>
           <span className="text-xl font-black font-display text-white mt-1 block">
-            18,492
+            {registeredWalletsCount}
           </span>
-          <span className="text-[10px] text-emerald-400 font-tech">↑ {t.thisWeekGrowth}</span>
+          <span className="text-[10px] text-emerald-400 font-tech">BNB Chain</span>
         </div>
 
         <div className="rounded-2xl border border-slate-800 bg-[#070e1c] p-3.5">
@@ -77,9 +85,9 @@ export const AdminPage: React.FC = () => {
             <span>{t.distributedFai}</span>
           </div>
           <span className="text-xl font-black font-display text-cyan-300 mt-1 block">
-            124,580.40
+            {totalFaiDistributed.toFixed(2)}
           </span>
-          <span className="text-[10px] text-slate-400 font-tech">{t.pilotPool}</span>
+          <span className="text-[10px] text-slate-400 font-tech">FAI</span>
         </div>
 
         <div className="rounded-2xl border border-slate-800 bg-[#070e1c] p-3.5">
