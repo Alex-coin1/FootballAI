@@ -20,10 +20,12 @@ import {
 import { useApp } from '../../context/AppContext';
 import { NavigationTab } from '../../types';
 import { formatBnbAddress } from '../../services/web3BnbService';
+import { isUserAdmin } from '../../services/adminService';
 
 export const Sidebar: React.FC = () => {
   const { currentTab, setCurrentTab, user, openAuthModal, t, settings } = useApp();
   const isAr = settings.language === 'ar';
+  const isAdmin = isUserAdmin(user.walletAddress);
 
   const mainNav = [
     { id: 'home' as NavigationTab, label: t.home, icon: Home },
@@ -36,12 +38,17 @@ export const Sidebar: React.FC = () => {
 
   const secondaryNav = [
     { id: 'news' as NavigationTab, label: t.news, icon: Newspaper },
-    { id: 'nfts' as NavigationTab, label: t.nfts, icon: Layers, count: '50' },
+    { id: 'nfts' as NavigationTab, label: t.nfts, icon: Layers, count: 'NFT' },
     { id: 'wallet' as NavigationTab, label: t.wallet, icon: Wallet },
     { id: 'profile' as NavigationTab, label: t.profile, icon: UserIcon },
     { id: 'settings' as NavigationTab, label: t.settings, icon: Settings },
     { id: 'about' as NavigationTab, label: t.about, icon: Info },
-    { id: 'admin' as NavigationTab, label: t.admin, icon: ShieldAlert },
+    ...(isAdmin ? [{ 
+      id: 'admin' as NavigationTab, 
+      label: isAr ? '👑 لوحة التحكم' : '👑 Admin Studio', 
+      icon: ShieldAlert, 
+      badge: 'OWNER' 
+    }] : []),
   ];
 
   return (

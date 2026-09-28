@@ -281,6 +281,11 @@ export interface NFTCard {
   edition: string;
   serialNumber?: string;
   stats?: NFTCardStats;
+  priceFai?: number;
+  description?: string;
+  tradingStatus?: 'LISTED' | 'UNLISTED' | 'SCHEDULED';
+  scheduledTradingDate?: string;
+  customFeatures?: string[];
 }
 
 export type NotificationType = 

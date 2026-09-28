@@ -18,10 +18,12 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { NavigationTab } from '../../types';
+import { isUserAdmin } from '../../services/adminService';
 
 export const BottomNavigation: React.FC = () => {
-  const { currentTab, setCurrentTab, moreMenuOpen, setMoreMenuOpen, t, settings } = useApp();
+  const { currentTab, setCurrentTab, user, moreMenuOpen, setMoreMenuOpen, t, settings } = useApp();
   const isAr = settings.language === 'ar';
+  const isAdmin = isUserAdmin(user.walletAddress);
 
   const navItems = [
     { id: 'home' as NavigationTab, label: t.home, icon: Home },
@@ -42,7 +44,7 @@ export const BottomNavigation: React.FC = () => {
       id: 'nfts' as NavigationTab, 
       label: t.nfts, 
       icon: Layers, 
-      desc: isAr ? '٥٠ بطاقة رقمية نادرة للاعبين' : '50 Collectible Football cards' 
+      desc: isAr ? 'سوق البطاقات الرقمية ومجموعات اللاعبين' : 'Collectible Football cards' 
     },
     { 
       id: 'wallet' as NavigationTab, 
@@ -74,12 +76,12 @@ export const BottomNavigation: React.FC = () => {
       icon: Info, 
       desc: isAr ? 'بروتوكول المنصة والتحليلات' : 'Platform protocol & intelligence' 
     },
-    { 
+    ...(isAdmin ? [{ 
       id: 'admin' as NavigationTab, 
-      label: t.admin, 
+      label: isAr ? '👑 لوحة التحكم' : '👑 Admin Studio', 
       icon: ShieldAlert, 
-      desc: isAr ? 'لوحة تحكم المشغل والاختبارات' : 'Operator panel & diagnostics' 
-    },
+      desc: isAr ? 'إدارة البطاقات الرقمية والمحافظ' : 'NFT Studio & Wallet Inspector' 
+    }] : []),
   ];
 
   const isMoreActive = moreItems.some(item => item.id === currentTab);

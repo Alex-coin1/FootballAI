@@ -195,12 +195,21 @@ export const NFTsPage: React.FC = () => {
                 </span>
               </div>
 
-              {/* Serial & Inspect Action */}
-              <div className="mt-2.5 pt-2 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-500">
-                <span className="font-mono">{card.edition}</span>
-                <span className="text-cyan-400 font-bold group-hover:underline">
-                  {t.inspect}
-                </span>
+              {/* Price & Schedule or Inspect Action */}
+              <div className="mt-2.5 pt-2 border-t border-slate-800 flex items-center justify-between text-[11px]">
+                <div className="flex items-center gap-1 font-tech font-bold text-amber-400">
+                  <span className="text-xs">{card.priceFai ?? (card.rarity === 'Legendary' ? 100 : card.rarity === 'Epic' ? 50 : 25)}</span>
+                  <span className="text-[10px] text-amber-500">FAI</span>
+                </div>
+                {card.tradingStatus === 'SCHEDULED' ? (
+                  <span className="rounded bg-cyan-950/80 px-1.5 py-0.2 text-[9px] font-tech text-cyan-300 border border-cyan-500/30">
+                    {card.scheduledTradingDate || 'SOON'}
+                  </span>
+                ) : (
+                  <span className="text-cyan-400 font-bold group-hover:underline text-[10px]">
+                    {t.inspect}
+                  </span>
+                )}
               </div>
             </div>
           ))}

@@ -155,6 +155,34 @@ export const NFTDetailModal: React.FC = () => {
               </div>
             </div>
 
+            {/* Card Description if present */}
+            {selectedNFT.description && (
+              <p className="text-xs text-slate-300 italic pt-2 border-t border-slate-800/80 leading-relaxed">
+                "{selectedNFT.description}"
+              </p>
+            )}
+
+            {/* Price & Trading Status Box */}
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 p-3 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase font-tech block">{isAr ? 'سعر البطاقة' : 'Card Price'}</span>
+                <span className="text-base font-bold font-tech text-amber-300">
+                  {selectedNFT.priceFai ?? (selectedNFT.rarity === 'Legendary' ? 100 : selectedNFT.rarity === 'Epic' ? 50 : 25)} FAI
+                </span>
+              </div>
+
+              {selectedNFT.scheduledTradingDate ? (
+                <div className="text-end">
+                  <span className="text-[10px] text-cyan-400 uppercase font-tech block">{isAr ? 'موعد التداول' : 'Launch Date'}</span>
+                  <span className="text-xs font-mono text-white">{selectedNFT.scheduledTradingDate}</span>
+                </div>
+              ) : (
+                <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-tech text-emerald-400 border border-emerald-500/30">
+                  {selectedNFT.tradingStatus || 'LISTED'}
+                </span>
+              )}
+            </div>
+
             {/* Mandated Disclaimers */}
             <div className="rounded-2xl border border-cyan-500/20 bg-cyan-950/20 p-3.5 flex items-start gap-2.5">
               <Info className="h-4 w-4 text-cyan-400 shrink-0 mt-0.5" />

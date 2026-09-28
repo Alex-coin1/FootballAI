@@ -1127,9 +1127,14 @@ export const ENRICHED_NFT_CARDS: NFTCard[] = NFT_CARDS_DATA.map(c => ({
   overallRating: c.overallRating ?? c.rating
 }));
 
+import { getManagedNFTs } from './adminService';
+
 export async function getNFTCards(rarityFilter?: NFTRarity | 'All', searchQuery?: string): Promise<NFTCard[]> {
-  await new Promise(resolve => setTimeout(resolve, 80));
-  let cards = [...ENRICHED_NFT_CARDS];
+  await new Promise(resolve => setTimeout(resolve, 60));
+  let cards = getManagedNFTs();
+
+  // For the marketplace, only display cards that are not explicitly UNLISTED
+  cards = cards.filter(c => c.tradingStatus !== 'UNLISTED');
 
   if (rarityFilter && rarityFilter !== 'All') {
     cards = cards.filter(c => c.rarity === rarityFilter);
@@ -1150,8 +1155,9 @@ export async function getNFTCards(rarityFilter?: NFTRarity | 'All', searchQuery?
 }
 
 export async function getNFTById(tokenId: number): Promise<NFTCard | undefined> {
-  await new Promise(resolve => setTimeout(resolve, 50));
-  return ENRICHED_NFT_CARDS.find(c => c.tokenId === tokenId);
+  await new Promise(resolve => setTimeout(resolve, 40));
+  const cards = getManagedNFTs();
+  return cards.find(c => c.tokenId === tokenId);
 }
 
 export const getAllNFTCards = getNFTCards;
