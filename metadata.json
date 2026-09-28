@@ -1,0 +1,6 @@
+{
+  "name": "FootballAI",
+  "description": "Where Football Meets Intelligence - Mobile-first football and AI platform featuring match predictions, pilot rewards, and digital player collectibles.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
