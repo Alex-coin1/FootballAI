@@ -29,7 +29,13 @@ import {
   Lock,
   ArrowRight,
   X,
-  AlertCircle
+  AlertCircle,
+  CheckSquare,
+  Gift,
+  Link,
+  Sliders,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { 
@@ -41,9 +47,14 @@ import {
   updateNFTPrice, 
   updateNFTTradingStatus, 
   getAllRegisteredWallets, 
-  adminSetUserBalance 
+  adminSetUserBalance,
+  getManagedTasks,
+  saveOrUpdateTask,
+  deleteManagedTask,
+  toggleTaskActive,
+  updateTaskReward
 } from '../services/adminService';
-import { NFTCard, NFTRarity, User } from '../types';
+import { NFTCard, NFTRarity, User, Task } from '../types';
 import { formatBnbAddress, getBscScanUrl } from '../services/web3BnbService';
 import { localizePosition, localizeRarity } from '../i18n/localize';
 
@@ -52,8 +63,8 @@ export const AdminPage: React.FC = () => {
   const isAr = settings.language === 'ar';
   const isAdmin = isUserAdmin(user.walletAddress);
 
-  // Active Tab: 'nfts' | 'wallets' | 'diagnostics'
-  const [activeTab, setActiveTab] = useState<'nfts' | 'wallets' | 'diagnostics'>('nfts');
+  // Active Tab: 'nfts' | 'tasks' | 'wallets' | 'diagnostics'
+  const [activeTab, setActiveTab] = useState<'nfts' | 'tasks' | 'wallets' | 'diagnostics'>('nfts');
 
   // Diagnostics State
   const [modelLatency, setModelLatency] = useState(38);
@@ -75,9 +86,19 @@ export const AdminPage: React.FC = () => {
   const [quickPriceCard, setQuickPriceCard] = useState<NFTCard | null>(null);
   const [newPriceInput, setNewPriceInput] = useState<string>('');
 
-  // Quick Schedule Modal State
-  const [quickScheduleCard, setQuickScheduleCard] = useState<NFTCard | null>(null);
-  const [scheduleDateInput, setScheduleDateInput] = useState<string>('');
+  // Tasks State
+  const [tasksList, setTasksList] = useState<Task[]>([]);
+  const [taskSearch, setTaskSearch] = useState('');
+  const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>('All');
+  const [taskDurationFilter, setTaskDurationFilter] = useState<string>('All');
+
+  // Task Modal State (Create / Edit)
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Partial<Task> | null>(null);
+
+  // Quick Task Reward Modal State
+  const [quickRewardTask, setQuickRewardTask] = useState<Task | null>(null);
+  const [newRewardInput, setNewRewardInput] = useState<string>('');
 
   // Wallets State
   const [walletsList, setWalletsList] = useState<User[]>([]);
@@ -90,6 +111,8 @@ export const AdminPage: React.FC = () => {
   const refreshData = () => {
     const cards = getManagedNFTs();
     setNftsList(cards);
+    const tasks = getManagedTasks();
+    setTasksList(tasks);
     const users = getAllRegisteredWallets();
     setWalletsList(users);
   };
@@ -211,15 +234,82 @@ export const AdminPage: React.FC = () => {
     showToast(isAr ? `تم تحديث السعر إلى ${p} FAI` : `Price updated to ${p} FAI`, 'success');
   };
 
-  // Submit Quick Schedule Update
-  const handleSaveQuickSchedule = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickScheduleCard) return;
+  // =========================================================================
+  // TASK HANDLERS
+  // =========================================================================
+  const handleOpenCreateTaskModal = () => {
+    setEditingTask({
+      title: '',
+      description: '',
+      reward: 0.10,
+      category: 'social',
+      actionUrl: '',
+      actionText: 'Start Mission',
+      durationMode: 'PERMANENT',
+      expiresAt: '',
+      isActive: true
+    });
+    setIsTaskModalOpen(true);
+  };
 
-    updateNFTTradingStatus(quickScheduleCard.tokenId, 'SCHEDULED', scheduleDateInput);
+  const handleOpenEditTaskModal = (task: Task) => {
+    setEditingTask({ ...task });
+    setIsTaskModalOpen(true);
+  };
+
+  const handleSaveTaskSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTask?.title?.trim()) {
+      showToast(isAr ? 'يرجى إدخال عنوان المهمة' : 'Please enter mission title', 'warning');
+      return;
+    }
+
+    const saved = saveOrUpdateTask(editingTask as any);
     refreshData();
-    setQuickScheduleCard(null);
-    showToast(isAr ? 'تمت جدولة موعد إطلاق وتداول البطاقة!' : 'Scheduled trading launch date set!', 'success');
+    setIsTaskModalOpen(false);
+    showToast(
+      isAr 
+        ? `تم حفظ المهمة "${saved.title}" بنجاح!` 
+        : `Mission "${saved.title}" saved successfully!`, 
+      'success'
+    );
+  };
+
+  const handleDeleteTask = (task: Task) => {
+    const confirmMsg = isAr 
+      ? `هل أنت متأكد من حذف مهمة "${task.title}"؟` 
+      : `Are you sure you want to delete mission "${task.title}"?`;
+    if (window.confirm(confirmMsg)) {
+      deleteManagedTask(task.id);
+      refreshData();
+      showToast(isAr ? 'تم حذف المهمة' : 'Mission deleted', 'info');
+    }
+  };
+
+  const handleToggleTaskActive = (task: Task) => {
+    toggleTaskActive(task.id);
+    refreshData();
+    showToast(
+      isAr 
+        ? `تم ${task.isActive !== false ? 'إيقاف' : 'تفعيل'} المهمة بنجاح` 
+        : `Mission ${task.isActive !== false ? 'paused' : 'activated'}`, 
+      'success'
+    );
+  };
+
+  const handleSaveQuickTaskReward = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickRewardTask) return;
+    const r = parseFloat(newRewardInput);
+    if (isNaN(r) || r < 0) {
+      showToast(isAr ? 'أدخل مكافأة صالحة' : 'Enter a valid reward', 'warning');
+      return;
+    }
+
+    updateTaskReward(quickRewardTask.id, r);
+    refreshData();
+    setQuickRewardTask(null);
+    showToast(isAr ? `تم تحديث المكافأة إلى ${r} FAI` : `Reward updated to ${r} FAI`, 'success');
   };
 
   // Copy Address helper
@@ -282,7 +372,7 @@ export const AdminPage: React.FC = () => {
             </h2>
             <p className="text-xs text-slate-300 leading-relaxed">
               {isAr 
-                ? 'لوحة تحكم المنصة وسوق الـ NFTs مخصصة حصرياً لعنوان محفظة المشرف المعتمد. يرجى التبديل لمحفظتك المصرح لها للوصول.'
+                ? 'لوحة تحكم المنصة وسوق الـ NFTs والمهام مخصصة حصرياً لعنوان محفظة المشرف المعتمد. يرجى التبديل لمحفظتك المصرح لها للوصول.'
                 : 'This portal is strictly protected and accessible only by the verified administrator wallet.'}
             </p>
           </div>
@@ -333,7 +423,7 @@ export const AdminPage: React.FC = () => {
   }
 
   // =========================================================================
-  // AUTHORIZED SUPER ADMIN CONTROL CENTER
+  // FILTERED DATA FOR TABS
   // =========================================================================
   const filteredNfts = nftsList.filter(card => {
     const matchesRarity = nftRarityFilter === 'All' || card.rarity === nftRarityFilter;
@@ -346,6 +436,15 @@ export const AdminPage: React.FC = () => {
       card.club.toLowerCase().includes(nftSearch.toLowerCase()) ||
       card.position.toLowerCase().includes(nftSearch.toLowerCase());
     return matchesRarity && matchesStatus && matchesQuery;
+  });
+
+  const filteredTasks = tasksList.filter(task => {
+    const matchesCategory = taskCategoryFilter === 'All' || task.category === taskCategoryFilter;
+    const matchesDuration = taskDurationFilter === 'All' || task.durationMode === taskDurationFilter;
+    const matchesQuery = taskSearch === '' || 
+      task.title.toLowerCase().includes(taskSearch.toLowerCase()) ||
+      task.description.toLowerCase().includes(taskSearch.toLowerCase());
+    return matchesCategory && matchesDuration && matchesQuery;
   });
 
   const filteredWallets = walletsList.filter(u => {
@@ -362,6 +461,10 @@ export const AdminPage: React.FC = () => {
   const totalListed = nftsList.filter(c => c.tradingStatus === 'LISTED').length;
   const totalScheduled = nftsList.filter(c => c.tradingStatus === 'SCHEDULED').length;
   const totalUnlisted = nftsList.filter(c => c.tradingStatus === 'UNLISTED').length;
+
+  const totalActiveTasks = tasksList.filter(t => t.isActive !== false).length;
+  const totalPermanentTasks = tasksList.filter(t => t.durationMode === 'PERMANENT' || !t.durationMode).length;
+  const totalTimeLimitedTasks = tasksList.filter(t => t.durationMode === 'TIME_LIMITED').length;
 
   return (
     <div className="space-y-6 pb-16 animate-in fade-in duration-200">
@@ -395,30 +498,42 @@ export const AdminPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Navigation Tabs between Admin Features */}
+        {/* 4 Navigation Tabs */}
         <div className="flex rounded-2xl bg-slate-900/90 p-1 border border-slate-800 gap-1 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setActiveTab('nfts')}
-            className={`flex-1 min-w-[140px] flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold font-tech uppercase tracking-wider transition ${
+            className={`flex-1 min-w-[130px] flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold font-tech uppercase tracking-wider transition ${
               activeTab === 'nfts'
                 ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 shadow-md'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <Layers className="h-4 w-4" />
-            <span>{isAr ? 'إدارة وسوق الـ NFTs' : 'NFT Studio & Market'}</span>
+            <span>{isAr ? 'سوق الـ NFTs' : 'NFT Studio'}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('tasks')}
+            className={`flex-1 min-w-[140px] flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold font-tech uppercase tracking-wider transition ${
+              activeTab === 'tasks'
+                ? 'bg-gradient-to-r from-emerald-400 to-teal-500 text-slate-950 shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <CheckSquare className="h-4 w-4" />
+            <span>{isAr ? 'المهام ومكافآت FAI' : 'Missions & Rewards'}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('wallets')}
-            className={`flex-1 min-w-[140px] flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold font-tech uppercase tracking-wider transition ${
+            className={`flex-1 min-w-[130px] flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold font-tech uppercase tracking-wider transition ${
               activeTab === 'wallets'
                 ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 shadow-md'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <Users className="h-4 w-4" />
-            <span>{isAr ? 'المحافظ والمستخدمين' : 'Wallets & Users'}</span>
+            <span>{isAr ? 'المحافظ' : 'Wallets'}</span>
           </button>
 
           <button
@@ -430,7 +545,7 @@ export const AdminPage: React.FC = () => {
             }`}
           >
             <Cpu className="h-4 w-4" />
-            <span>{isAr ? 'تشخيصات المنصة' : 'Diagnostics'}</span>
+            <span>{isAr ? 'التشخيصات' : 'Diagnostics'}</span>
           </button>
         </div>
       </div>
@@ -440,7 +555,6 @@ export const AdminPage: React.FC = () => {
           ===================================================================== */}
       {activeTab === 'nfts' && (
         <div className="space-y-5 animate-in fade-in duration-200">
-          {/* NFT Stats Quick Bar */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="rounded-2xl border border-slate-800 bg-[#070e1c] p-3.5">
               <span className="text-[10px] font-tech text-slate-400 uppercase block">{isAr ? 'إجمالي البطاقات' : 'Total NFTs'}</span>
@@ -460,7 +574,7 @@ export const AdminPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Action Header: Search & + Create NFT */}
+          {/* Action Header */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 rtl:right-3.5 rtl:left-auto" />
@@ -473,57 +587,13 @@ export const AdminPage: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleOpenCreateModal}
-                className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-md shadow-amber-500/20 hover:from-amber-300 hover:to-amber-400 transition shrink-0"
-              >
-                <Plus className="h-4 w-4 stroke-[3]" />
-                <span>{isAr ? 'رفع / إنشاء بطاقة جديدة' : '+ Upload New NFT'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Filters Bar */}
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Rarity */}
-            <div className="flex gap-1 overflow-x-auto no-scrollbar">
-              {['All', 'Legendary', 'Epic', 'Rare', 'Common'].map(r => (
-                <button
-                  key={r}
-                  onClick={() => setNftRarityFilter(r)}
-                  className={`rounded-xl px-3 py-1 text-xs font-semibold whitespace-nowrap transition border ${
-                    nftRarityFilter === r
-                      ? 'border-amber-400 bg-amber-950/40 text-amber-300'
-                      : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-
-            {/* Status */}
-            <div className="flex gap-1 overflow-x-auto no-scrollbar sm:ml-auto">
-              {[
-                { id: 'All', label: isAr ? 'الكل' : 'All' },
-                { id: 'LISTED', label: isAr ? 'المعروض' : 'Listed' },
-                { id: 'SCHEDULED', label: isAr ? 'المجدول' : 'Scheduled' },
-                { id: 'UNLISTED', label: isAr ? 'المخفي' : 'Unlisted' }
-              ].map(s => (
-                <button
-                  key={s.id}
-                  onClick={() => setNftStatusFilter(s.id)}
-                  className={`rounded-xl px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap transition border ${
-                    nftStatusFilter === s.id
-                      ? 'border-cyan-400 bg-cyan-950/50 text-cyan-300'
-                      : 'border-slate-800 bg-slate-900/30 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
+            <button
+              onClick={handleOpenCreateModal}
+              className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-md shadow-amber-500/20 hover:from-amber-300 hover:to-amber-400 transition shrink-0"
+            >
+              <Plus className="h-4 w-4 stroke-[3]" />
+              <span>{isAr ? 'رفع / إنشاء بطاقة جديدة' : '+ Upload New NFT'}</span>
+            </button>
           </div>
 
           {/* NFTs Management Grid */}
@@ -533,7 +603,6 @@ export const AdminPage: React.FC = () => {
                 key={`admin-nft-${card.tokenId}`}
                 className="rounded-2xl border border-slate-800 bg-gradient-to-b from-[#0b1424] to-[#070d18] p-4 flex flex-col justify-between space-y-3 hover:border-amber-500/40 transition-all shadow-md"
               >
-                {/* Card Top: Avatar + Info */}
                 <div className="flex items-start gap-3">
                   <div className="relative h-18 w-18 sm:h-20 sm:w-20 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shrink-0">
                     <img src={card.imageUrl} alt={card.playerName} className="h-full w-full object-cover" />
@@ -575,7 +644,6 @@ export const AdminPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Price & Schedule Info */}
                 <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 p-2.5 flex items-center justify-between text-xs">
                   <div>
                     <span className="text-[10px] text-slate-400 uppercase font-tech block">{isAr ? 'السعر الحالي' : 'Listing Price'}</span>
@@ -599,12 +667,10 @@ export const AdminPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Card Controls Grid */}
                 <div className="grid grid-cols-4 gap-1.5 pt-1">
                   <button
                     onClick={() => handleOpenEditModal(card)}
                     className="flex items-center justify-center gap-1 rounded-xl bg-slate-800/80 hover:bg-slate-700 py-1.5 text-xs text-white transition"
-                    title={isAr ? 'تعديل البيانات والصورة' : 'Edit details & image'}
                   >
                     <Edit className="h-3.5 w-3.5 text-cyan-400" />
                     <span className="text-[11px] font-semibold">{isAr ? 'تعديل' : 'Edit'}</span>
@@ -616,7 +682,6 @@ export const AdminPage: React.FC = () => {
                       setNewPriceInput((card.priceFai ?? 50).toString());
                     }}
                     className="flex items-center justify-center gap-1 rounded-xl bg-slate-800/80 hover:bg-slate-700 py-1.5 text-xs text-amber-300 transition"
-                    title={isAr ? 'تعديل السعر' : 'Adjust price'}
                   >
                     <DollarSign className="h-3.5 w-3.5 text-amber-400" />
                     <span className="text-[11px] font-semibold">{isAr ? 'السعر' : 'Price'}</span>
@@ -625,7 +690,6 @@ export const AdminPage: React.FC = () => {
                   <button
                     onClick={() => handleToggleListing(card)}
                     className="flex items-center justify-center gap-1 rounded-xl bg-slate-800/80 hover:bg-slate-700 py-1.5 text-xs text-slate-300 transition"
-                    title={card.tradingStatus === 'LISTED' ? (isAr ? 'إخفاء من السوق' : 'Delist') : (isAr ? 'عرض بالسوق' : 'List')}
                   >
                     {card.tradingStatus === 'LISTED' ? (
                       <>
@@ -643,7 +707,6 @@ export const AdminPage: React.FC = () => {
                   <button
                     onClick={() => handleDeleteNft(card)}
                     className="flex items-center justify-center gap-1 rounded-xl bg-rose-950/20 hover:bg-rose-900/40 border border-rose-500/20 py-1.5 text-xs text-rose-300 transition"
-                    title={isAr ? 'حذف' : 'Delete'}
                   >
                     <Trash2 className="h-3.5 w-3.5 text-rose-400" />
                     <span className="text-[11px] font-semibold">{isAr ? 'حذف' : 'Del'}</span>
@@ -656,11 +719,219 @@ export const AdminPage: React.FC = () => {
       )}
 
       {/* =====================================================================
-          TAB 2: REGISTERED WALLETS & USERS
+          TAB 2: TASKS & MISSIONS MANAGEMENT STUDIO
+          ===================================================================== */}
+      {activeTab === 'tasks' && (
+        <div className="space-y-5 animate-in fade-in duration-200">
+          {/* Tasks Stats Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="rounded-2xl border border-slate-800 bg-[#070e1c] p-3.5">
+              <span className="text-[10px] font-tech text-slate-400 uppercase block">{isAr ? 'إجمالي المهام' : 'Total Missions'}</span>
+              <span className="text-2xl font-black font-display text-white mt-1 block">{tasksList.length}</span>
+            </div>
+            <div className="rounded-2xl border border-emerald-500/30 bg-[#06140e] p-3.5">
+              <span className="text-[10px] font-tech text-emerald-400 uppercase block">{isAr ? 'المهام النشطة' : 'Active Missions'}</span>
+              <span className="text-2xl font-black font-display text-emerald-300 mt-1 block">{totalActiveTasks}</span>
+            </div>
+            <div className="rounded-2xl border border-purple-500/30 bg-[#12071d] p-3.5">
+              <span className="text-[10px] font-tech text-purple-400 uppercase block">{isAr ? 'مهام دائمة' : 'Permanent'}</span>
+              <span className="text-2xl font-black font-display text-purple-300 mt-1 block">{totalPermanentTasks}</span>
+            </div>
+            <div className="rounded-2xl border border-amber-500/30 bg-[#191004] p-3.5">
+              <span className="text-[10px] font-tech text-amber-400 uppercase block">{isAr ? 'محددة بوقت' : 'Time-Limited'}</span>
+              <span className="text-2xl font-black font-display text-amber-300 mt-1 block">{totalTimeLimitedTasks}</span>
+            </div>
+          </div>
+
+          {/* Action Header: Search + Create Task */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 rtl:right-3.5 rtl:left-auto" />
+              <input
+                type="text"
+                placeholder={isAr ? 'البحث عن مهمة، وصف، أو رابط...' : 'Search mission title, description, or link...'}
+                value={taskSearch}
+                onChange={e => setTaskSearch(e.target.value)}
+                className="w-full rounded-2xl border border-slate-800 bg-[#070e1c] pl-10 pr-4 rtl:pr-10 rtl:pl-4 py-2.5 text-xs text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none"
+              />
+            </div>
+
+            <button
+              onClick={handleOpenCreateTaskModal}
+              className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-500 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-md shadow-emerald-500/20 hover:from-emerald-300 hover:to-teal-400 transition shrink-0"
+            >
+              <Plus className="h-4 w-4 stroke-[3]" />
+              <span>{isAr ? '+ إضافة مهمة ومكافأة جديدة' : '+ Create Mission & Reward'}</span>
+            </button>
+          </div>
+
+          {/* Filters Bar for Tasks */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1 overflow-x-auto no-scrollbar">
+              {[
+                { id: 'All', label: isAr ? 'كافة التصنيفات' : 'All Categories' },
+                { id: 'social', label: isAr ? 'مجتمعية' : 'Social' },
+                { id: 'daily', label: isAr ? 'يومية' : 'Daily' },
+                { id: 'prediction', label: isAr ? 'توقعات' : 'Prediction' },
+                { id: 'special', label: isAr ? 'خاصة' : 'Special' }
+              ].map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => setTaskCategoryFilter(c.id)}
+                  className={`rounded-xl px-3 py-1 text-xs font-semibold whitespace-nowrap transition border ${
+                    taskCategoryFilter === c.id
+                      ? 'border-emerald-400 bg-emerald-950/40 text-emerald-300'
+                      : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-1 overflow-x-auto no-scrollbar sm:ml-auto">
+              {[
+                { id: 'All', label: isAr ? 'كل الفترات' : 'All Durations' },
+                { id: 'PERMANENT', label: isAr ? 'دائمة' : 'Permanent' },
+                { id: 'TIME_LIMITED', label: isAr ? 'محددة بوقت' : 'Time-Limited' },
+                { id: 'DAILY_RECURRING', label: isAr ? 'متجددة يومياً' : '24h Recurring' }
+              ].map(d => (
+                <button
+                  key={d.id}
+                  onClick={() => setTaskDurationFilter(d.id)}
+                  className={`rounded-xl px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap transition border ${
+                    taskDurationFilter === d.id
+                      ? 'border-purple-400 bg-purple-950/50 text-purple-300'
+                      : 'border-slate-800 bg-slate-900/30 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Tasks Management Grid */}
+          <div className="space-y-3">
+            {filteredTasks.map(task => (
+              <div
+                key={`admin-task-${task.id}`}
+                className={`rounded-2xl border p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition shadow-sm ${
+                  task.isActive === false
+                    ? 'border-slate-800/80 bg-slate-900/30 opacity-70'
+                    : 'border-slate-800 bg-gradient-to-r from-[#071322] to-[#050b16] hover:border-emerald-500/30'
+                }`}
+              >
+                {/* Task Details */}
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-white text-sm">{task.title}</span>
+
+                    <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-tech font-bold text-emerald-400 border border-emerald-500/30">
+                      +{task.reward.toFixed(2)} FAI
+                    </span>
+
+                    <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[9px] font-tech uppercase text-slate-400">
+                      {task.category}
+                    </span>
+
+                    {/* Duration Badge */}
+                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-tech uppercase border ${
+                      task.durationMode === 'TIME_LIMITED'
+                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                        : task.durationMode === 'DAILY_RECURRING'
+                          ? 'border-purple-500/30 bg-purple-500/10 text-purple-300'
+                          : 'border-slate-700 bg-slate-800 text-slate-400'
+                    }`}>
+                      {task.durationMode === 'TIME_LIMITED' ? (isAr ? '⏳ مؤقتة' : 'Time-Limited') :
+                       task.durationMode === 'DAILY_RECURRING' ? (isAr ? '🔄 يومية متجددة' : 'Daily 24h') :
+                       (isAr ? 'دائمة' : 'Permanent')}
+                    </span>
+
+                    {task.expiresAt && (
+                      <span className="text-[10px] text-amber-400 font-mono">
+                        {isAr ? `ينتهي: ${task.expiresAt}` : `Expires: ${task.expiresAt}`}
+                      </span>
+                    )}
+
+                    {task.isActive === false && (
+                      <span className="rounded bg-rose-950 px-1.5 py-0.2 text-[9px] font-bold text-rose-300 border border-rose-500/40">
+                        {isAr ? 'متوقفة مؤقتاً' : 'PAUSED'}
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-slate-400 leading-relaxed font-sans max-w-xl">
+                    {task.description}
+                  </p>
+
+                  {task.actionUrl && (
+                    <div className="flex items-center gap-1.5 text-xs text-cyan-400 font-mono pt-0.5">
+                      <Link className="h-3 w-3" />
+                      <a href={task.actionUrl} target="_blank" rel="noreferrer" className="hover:underline truncate max-w-sm">
+                        {task.actionUrl}
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* Task Actions */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Quick Reward Adjust */}
+                  <button
+                    onClick={() => {
+                      setQuickRewardTask(task);
+                      setNewRewardInput(task.reward.toString());
+                    }}
+                    className="flex items-center gap-1 rounded-xl bg-slate-800 hover:bg-slate-700 px-3 py-1.5 text-xs text-emerald-300 font-bold font-tech transition"
+                    title={isAr ? 'تعديل المكافأة' : 'Adjust FAI Reward'}
+                  >
+                    <Coins className="h-3.5 w-3.5 text-emerald-400" />
+                    <span>{task.reward} FAI</span>
+                  </button>
+
+                  {/* Edit */}
+                  <button
+                    onClick={() => handleOpenEditTaskModal(task)}
+                    className="rounded-xl bg-slate-800 hover:bg-slate-700 p-2 text-slate-300 hover:text-white transition"
+                    title={isAr ? 'تعديل المهمة' : 'Edit Mission'}
+                  >
+                    <Edit className="h-3.5 w-3.5 text-cyan-400" />
+                  </button>
+
+                  {/* Toggle Active / Paused */}
+                  <button
+                    onClick={() => handleToggleTaskActive(task)}
+                    className="rounded-xl bg-slate-800 hover:bg-slate-700 p-2 text-slate-300 hover:text-white transition"
+                    title={task.isActive !== false ? (isAr ? 'إيقاف مؤقت' : 'Pause') : (isAr ? 'تفعيل' : 'Activate')}
+                  >
+                    {task.isActive !== false ? (
+                      <ToggleRight className="h-4 w-4 text-emerald-400" />
+                    ) : (
+                      <ToggleLeft className="h-4 w-4 text-slate-500" />
+                    )}
+                  </button>
+
+                  {/* Delete */}
+                  <button
+                    onClick={() => handleDeleteTask(task)}
+                    className="rounded-xl bg-rose-950/30 hover:bg-rose-900/50 border border-rose-500/20 p-2 text-rose-300 transition"
+                    title={isAr ? 'حذف المهمة' : 'Delete Mission'}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          TAB 3: REGISTERED WALLETS & USERS
           ===================================================================== */}
       {activeTab === 'wallets' && (
         <div className="space-y-4 animate-in fade-in duration-200">
-          {/* Wallets Overview Header */}
           <div className="rounded-2xl border border-cyan-500/30 bg-[#070e1c] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold font-display text-white flex items-center gap-2">
@@ -681,7 +952,6 @@ export const AdminPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Search Input */}
           <div className="relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 rtl:right-3.5 rtl:left-auto" />
             <input
@@ -693,7 +963,6 @@ export const AdminPage: React.FC = () => {
             />
           </div>
 
-          {/* Wallets Cards List */}
           <div className="space-y-3">
             {filteredWallets.length === 0 ? (
               <div className="rounded-2xl border border-slate-800 bg-[#070e1c] p-8 text-center text-slate-400 text-xs">
@@ -705,7 +974,6 @@ export const AdminPage: React.FC = () => {
                   key={`wallet-user-${u.id}-${u.walletAddress}`}
                   className="rounded-2xl border border-slate-800 bg-gradient-to-r from-[#070f1e] to-[#050a14] p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm hover:border-cyan-500/30 transition"
                 >
-                  {/* User Avatar & Identity */}
                   <div className="flex items-start gap-3 min-w-0">
                     <div className="relative h-12 w-12 rounded-xl overflow-hidden border border-slate-700 bg-slate-900 shrink-0">
                       <img src={u.avatarUrl} alt={u.username} className="h-full w-full object-cover" />
@@ -727,7 +995,6 @@ export const AdminPage: React.FC = () => {
                         )}
                       </div>
 
-                      {/* Wallet Address */}
                       <div className="mt-1 flex items-center gap-1.5 text-xs">
                         <span className="text-slate-400 font-tech uppercase text-[10px]">{isAr ? 'المحفظة:' : 'Wallet:'}</span>
                         <span className="font-mono text-cyan-300 font-medium truncate max-w-[200px] sm:max-w-none">
@@ -755,7 +1022,6 @@ export const AdminPage: React.FC = () => {
                         )}
                       </div>
 
-                      {/* BNB Deposit Vault */}
                       {u.bnbDepositAddress && (
                         <div className="mt-0.5 flex items-center gap-1.5 text-xs text-amber-300/80">
                           <span className="text-slate-500 font-tech uppercase text-[10px]">{isAr ? 'الإيداع:' : 'Vault:'}</span>
@@ -767,7 +1033,6 @@ export const AdminPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Financial & Activity Stats */}
                   <div className="flex flex-wrap items-center gap-4 text-xs">
                     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-2.5 text-center min-w-[100px]">
                       <span className="text-[10px] text-slate-400 uppercase font-tech block">{isAr ? 'الرصيد' : 'Balance'}</span>
@@ -784,7 +1049,6 @@ export const AdminPage: React.FC = () => {
                       <span className="text-[9px] text-slate-500 font-mono">{u.referralCode}</span>
                     </div>
 
-                    {/* Admin Balance Action */}
                     {u.walletAddress && (
                       <button
                         onClick={() => {
@@ -805,7 +1069,7 @@ export const AdminPage: React.FC = () => {
       )}
 
       {/* =====================================================================
-          TAB 3: DIAGNOSTICS & SYSTEM CONTROLS
+          TAB 4: DIAGNOSTICS & SYSTEM CONTROLS
           ===================================================================== */}
       {activeTab === 'diagnostics' && (
         <div className="space-y-4 animate-in fade-in duration-200">
@@ -844,7 +1108,6 @@ export const AdminPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Operational Triggers */}
           <div className="rounded-2xl border border-slate-800 bg-[#070e1c] p-5 space-y-3">
             <h3 className="text-xs font-bold uppercase font-tech tracking-wider text-white flex items-center gap-2">
               <Activity className="h-4 w-4 text-cyan-400" />
@@ -887,7 +1150,6 @@ export const AdminPage: React.FC = () => {
             className="w-full max-w-2xl rounded-3xl border border-amber-500/40 bg-[#091122] shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
             onClick={e => e.stopPropagation()}
           >
-            {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4 bg-[#060c18]">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40">
@@ -913,9 +1175,7 @@ export const AdminPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Modal Body Form */}
             <form onSubmit={handleSaveNftSubmit} className="p-6 overflow-y-auto space-y-4 no-scrollbar">
-              {/* Image Preview & Upload Row */}
               <div className="rounded-2xl border border-slate-800 bg-[#050a14] p-4 flex flex-col sm:flex-row items-center gap-4">
                 <div className="relative h-28 w-28 rounded-2xl overflow-hidden border-2 border-amber-400/50 bg-slate-900 shrink-0 shadow-lg shadow-amber-500/10">
                   <img src={imagePreview || editingCard.imageUrl} alt="Preview" className="h-full w-full object-cover" />
@@ -957,7 +1217,6 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Basic Details: Name, Club, Position, Nationality */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-bold text-slate-300 block mb-1">
@@ -1015,7 +1274,6 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Rarity, Rating & Price */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-bold text-slate-300 block mb-1">
@@ -1065,7 +1323,6 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Trading Status & Scheduled Date */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl border border-slate-800 bg-[#050a14] p-3.5">
                 <div>
                   <label className="text-xs font-bold text-slate-300 block mb-1">
@@ -1096,7 +1353,6 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Ability & Custom Description */}
               <div className="space-y-3">
                 <div>
                   <label className="text-xs font-bold text-slate-300 block mb-1">
@@ -1125,7 +1381,6 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Detailed Attributes (Pace, Shooting, etc.) */}
               <div>
                 <span className="text-xs font-bold font-tech text-slate-400 uppercase block mb-2">
                   {isAr ? 'إحصائيات البطاقة الستة (Card Stats):' : 'Card Attributes:'}
@@ -1157,7 +1412,6 @@ export const AdminPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Modal Submit Actions */}
               <div className="pt-3 border-t border-slate-800 flex gap-2">
                 <button
                   type="button"
@@ -1179,7 +1433,279 @@ export const AdminPage: React.FC = () => {
       )}
 
       {/* =====================================================================
-          MODAL 2: QUICK PRICE ADJUSTMENT MODAL
+          MODAL 2: CREATE / EDIT MISSION & TASK MODAL
+          ===================================================================== */}
+      {isTaskModalOpen && editingTask && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-4 overflow-y-auto"
+          onClick={() => setIsTaskModalOpen(false)}
+        >
+          <div 
+            className="w-full max-w-lg rounded-3xl border border-emerald-500/40 bg-[#07131e] shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4 bg-[#050f18]">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                  <CheckSquare className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold font-display text-white">
+                    {editingTask.id && tasksList.some(t => t.id === editingTask.id)
+                      ? (isAr ? `تعديل المهمة: ${editingTask.title}` : `Edit Mission: ${editingTask.title}`)
+                      : (isAr ? 'إضافة مهمة ومكافأة FAI جديدة' : 'Add New Mission & FAI Reward')}
+                  </h3>
+                  <span className="text-[10px] font-tech text-emerald-400">
+                    EARN FAI POINTS • COMMUNITY & PILOT INCENTIVES
+                  </span>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setIsTaskModalOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTaskSubmit} className="p-6 overflow-y-auto space-y-4 no-scrollbar">
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">
+                  {isAr ? 'عنوان المهمة' : 'Mission Title'} *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder={isAr ? 'مثال: انضم إلى قناة التلغرام الرسمية' : 'e.g. Join Official Telegram Community'}
+                  value={editingTask.title || ''}
+                  onChange={e => setEditingTask(prev => ({ ...prev, title: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900/80 px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">
+                  {isAr ? 'وصف المهمة والتعليمات' : 'Mission Description'}
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder={isAr ? 'اشرح للمستخدم ما يجب فعله للحصول على النقاط...' : 'Explain the steps required to earn points...'}
+                  value={editingTask.description || ''}
+                  onChange={e => setEditingTask(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900/80 px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none"
+                />
+              </div>
+
+              {/* Reward & Category Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-emerald-300 block mb-1">
+                    {isAr ? 'مكافأة الإنجاز (نقاط FAI)' : 'Reward in FAI Points'} *
+                  </label>
+                  <input
+                    type="number"
+                    min={0.01}
+                    step={0.05}
+                    required
+                    value={editingTask.reward !== undefined ? editingTask.reward : 0.10}
+                    onChange={e => setEditingTask(prev => ({ ...prev, reward: parseFloat(e.target.value) || 0 }))}
+                    className="w-full rounded-xl border border-emerald-500/50 bg-slate-900 px-3 py-2 text-sm font-bold text-emerald-300 focus:border-emerald-400 focus:outline-none font-tech"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    {isAr ? 'تصنيف المهمة' : 'Category'}
+                  </label>
+                  <select
+                    value={editingTask.category || 'social'}
+                    onChange={e => setEditingTask(prev => ({ ...prev, category: e.target.value as any }))}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                  >
+                    <option value="social">{isAr ? 'مجتمعية (Social & Community)' : 'Social'}</option>
+                    <option value="daily">{isAr ? 'يومية (Daily Habit)' : 'Daily'}</option>
+                    <option value="prediction">{isAr ? 'توقعات المباريات (Prediction)' : 'Prediction'}</option>
+                    <option value="special">{isAr ? 'خاصة وحصرية (Special Mission)' : 'Special'}</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Duration Mode & Expiry (Per user request) */}
+              <div className="rounded-2xl border border-slate-800 bg-[#050c16] p-4 space-y-3">
+                <span className="text-xs font-bold font-tech text-slate-300 uppercase block">
+                  {isAr ? 'تحديد فترة صلاحية المهمة' : 'Task Duration & Period Settings'}
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 block mb-1">
+                      {isAr ? 'نوع المدة' : 'Duration Type'}
+                    </label>
+                    <select
+                      value={editingTask.durationMode || 'PERMANENT'}
+                      onChange={e => setEditingTask(prev => ({ ...prev, durationMode: e.target.value as any }))}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                    >
+                      <option value="PERMANENT">{isAr ? 'دائمة ومستمرة (Permanent)' : 'Permanent (Always Active)'}</option>
+                      <option value="TIME_LIMITED">{isAr ? 'محددة بوقت وتاريخ انتهاء (Time-Limited)' : 'Time-Limited (Has Expiry)'}</option>
+                      <option value="DAILY_RECURRING">{isAr ? 'تتجدد يومياً كل 24 ساعة (Daily 24h)' : 'Daily Recurring (24h)'}</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 block mb-1">
+                      {isAr ? 'تاريخ / مدة الانتهاء (إن وجدت)' : 'Expiry Deadline (If Limited)'}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 2026-10-15 23:59 UTC or 3 Days"
+                      value={editingTask.expiresAt || ''}
+                      onChange={e => setEditingTask(prev => ({ ...prev, expiresAt: e.target.value }))}
+                      disabled={editingTask.durationMode !== 'TIME_LIMITED'}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none disabled:opacity-40"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Action URL & Button Text */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    {isAr ? 'رابط الإجراء الخارجي (اختياري)' : 'External Action URL (Optional)'}
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://t.me/... or https://x.com/..."
+                    value={editingTask.actionUrl || ''}
+                    onChange={e => setEditingTask(prev => ({ ...prev, actionUrl: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    {isAr ? 'نص زر التنفيذ' : 'Button Label'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Join Channel, Follow on X"
+                    value={editingTask.actionText || 'Start Mission'}
+                    onChange={e => setEditingTask(prev => ({ ...prev, actionText: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Active Toggle */}
+              <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-[#050c16] p-3 text-xs">
+                <span className="text-slate-300 font-semibold">{isAr ? 'حالة تفعيل المهمة في التطبيق' : 'Active in Application'}</span>
+                <button
+                  type="button"
+                  onClick={() => setEditingTask(prev => ({ ...prev, isActive: prev?.isActive === false ? true : false }))}
+                  className="flex items-center gap-1.5"
+                >
+                  {editingTask.isActive !== false ? (
+                    <span className="text-emerald-400 font-bold flex items-center gap-1">
+                      <ToggleRight className="h-5 w-5" />
+                      <span>{isAr ? 'مفعلة' : 'Active'}</span>
+                    </span>
+                  ) : (
+                    <span className="text-slate-500 font-bold flex items-center gap-1">
+                      <ToggleLeft className="h-5 w-5" />
+                      <span>{isAr ? 'متوقفة' : 'Paused'}</span>
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* Modal Buttons */}
+              <div className="pt-3 border-t border-slate-800 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsTaskModalOpen(false)}
+                  className="flex-1 rounded-xl border border-slate-800 bg-slate-900 py-3 text-xs font-semibold text-slate-300 hover:text-white transition"
+                >
+                  {isAr ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 py-3 text-xs font-bold text-slate-950 shadow-md shadow-emerald-500/20 hover:from-emerald-300 hover:to-teal-400 transition"
+                >
+                  {editingTask.id ? (isAr ? 'حفظ تعديلات المهمة' : 'Save Mission') : (isAr ? 'نشر المهمة الآن' : 'Publish Mission')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          MODAL 3: QUICK TASK REWARD ADJUSTMENT
+          ===================================================================== */}
+      {quickRewardTask && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
+          onClick={() => setQuickRewardTask(null)}
+        >
+          <div 
+            className="w-full max-w-sm rounded-3xl border border-emerald-500/40 bg-[#07131e] p-5 shadow-2xl space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold font-display text-white flex items-center gap-1.5">
+                <Coins className="h-4 w-4 text-emerald-400" />
+                <span>{isAr ? 'تعديل مكافأة المهمة' : 'Adjust Mission Reward'}</span>
+              </h3>
+              <button onClick={() => setQuickRewardTask(null)} className="text-slate-400 hover:text-white">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 font-semibold truncate">
+              {quickRewardTask.title}
+            </p>
+
+            <form onSubmit={handleSaveQuickTaskReward} className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">
+                  {isAr ? 'المكافأة الجديدة (FAI)' : 'New FAI Reward'}
+                </label>
+                <input
+                  type="number"
+                  min={0.01}
+                  step={0.05}
+                  required
+                  value={newRewardInput}
+                  onChange={e => setNewRewardInput(e.target.value)}
+                  className="w-full rounded-xl border border-emerald-500/50 bg-slate-900 px-3 py-2 text-sm font-bold text-emerald-300 focus:outline-none font-tech"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuickRewardTask(null)}
+                  className="flex-1 rounded-xl bg-slate-800 py-2 text-xs font-semibold text-slate-300"
+                >
+                  {isAr ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 py-2 text-xs font-bold text-slate-950"
+                >
+                  {isAr ? 'حفظ المكافأة' : 'Update Reward'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          MODAL 4: QUICK NFT PRICE ADJUSTMENT MODAL
           ===================================================================== */}
       {quickPriceCard && (
         <div 
@@ -1242,7 +1768,7 @@ export const AdminPage: React.FC = () => {
       )}
 
       {/* =====================================================================
-          MODAL 3: ADJUST USER WALLET BALANCE
+          MODAL 5: ADJUST USER WALLET BALANCE
           ===================================================================== */}
       {adjustBalanceUser && (
         <div 

@@ -230,15 +230,30 @@ export function saveStoredUser(user: User): void {
 export function getStoredTasks(): Task[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.TASKS);
-    if (raw) {
-      const parsed: Task[] = JSON.parse(raw);
-      return parsed.map(t => {
-        if (t.id === 'task-2') {
-          return { ...t, actionUrl: 'https://x.com/FootballAIHQ' };
-        }
-        return t;
-      });
+    let userTaskList: Task[] = raw ? JSON.parse(raw) : DEFAULT_TASKS;
+
+    // Check if custom tasks managed by admin exist
+    const customRaw = localStorage.getItem('footballai_custom_tasks');
+    if (customRaw) {
+      const managedTasks: Task[] = JSON.parse(customRaw);
+      const userStatusMap = new Map<string, Task['status']>();
+      userTaskList.forEach(t => userStatusMap.set(t.id, t.status));
+
+      // Return managed tasks preserving any user's completed status, filtering out inactive
+      return managedTasks
+        .filter(t => t.isActive !== false)
+        .map(t => ({
+          ...t,
+          status: userStatusMap.get(t.id) || t.status || 'AVAILABLE'
+        }));
     }
+
+    return userTaskList.map(t => {
+      if (t.id === 'task-2') {
+        return { ...t, actionUrl: 'https://x.com/FootballAIHQ' };
+      }
+      return t;
+    });
   } catch (e) {
     console.error('Failed to load tasks', e);
   }

@@ -9,9 +9,9 @@
  * - Wallet & Users Inspector: View all registered users, balances, deposit addresses, referrals
  */
 
-import { NFTCard, User } from '../types';
+import { NFTCard, User, Task } from '../types';
 import { ENRICHED_NFT_CARDS } from './nftApi';
-import { getUsersRegistry, saveUsersRegistry, getStoredUser, saveStoredUser } from './userApi';
+import { getUsersRegistry, saveUsersRegistry, getStoredUser, saveStoredUser, DEFAULT_TASKS } from './userApi';
 
 export const ADMIN_WALLET_ADDRESS = '0xf609ca4b709cae5304547a1345a29d31565a19a5'.toLowerCase();
 
@@ -219,3 +219,128 @@ export function adminSetUserBalance(walletAddress: string, newBalance: number): 
 
   return true;
 }
+
+// ============================================================================
+// TASKS & MISSIONS MANAGEMENT (Admin Controlled)
+// ============================================================================
+const STORAGE_KEY_CUSTOM_TASKS = 'footballai_custom_tasks';
+
+/**
+ * Get all tasks merged with custom admin tasks and modifications
+ */
+export function getManagedTasks(): Task[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_CUSTOM_TASKS);
+    if (raw) {
+      const customTasks: Task[] = JSON.parse(raw);
+      const customMap = new Map<string, Task>();
+      customTasks.forEach(t => customMap.set(t.id, t));
+
+      const merged = DEFAULT_TASKS.map(base => {
+        if (customMap.has(base.id)) {
+          const override = customMap.get(base.id)!;
+          customMap.delete(base.id);
+          return override;
+        }
+        return {
+          ...base,
+          durationMode: base.durationMode || 'PERMANENT',
+          isActive: base.isActive !== false
+        };
+      });
+
+      // Append newly added admin tasks
+      customMap.forEach(newTask => {
+        merged.push(newTask);
+      });
+
+      return merged;
+    }
+  } catch (e) {
+    console.error('Failed to parse custom tasks', e);
+  }
+
+  return DEFAULT_TASKS.map(base => ({
+    ...base,
+    durationMode: base.durationMode || 'PERMANENT',
+    isActive: true
+  }));
+}
+
+/**
+ * Save all managed tasks
+ */
+export function saveAllManagedTasks(tasks: Task[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_CUSTOM_TASKS, JSON.stringify(tasks));
+  } catch (e) {
+    console.error('Failed to save managed tasks', e);
+  }
+}
+
+/**
+ * Create or update a task
+ */
+export function saveOrUpdateTask(taskData: Partial<Task> & { title: string; reward: number }): Task {
+  const allTasks = getManagedTasks();
+  const taskId = taskData.id || `task_admin_${Date.now()}`;
+
+  const fullTask: Task = {
+    id: taskId,
+    title: taskData.title.trim(),
+    description: taskData.description?.trim() || 'Complete this task to earn FAI rewards.',
+    reward: Math.max(0, Number((taskData.reward || 0.05).toFixed(4))),
+    status: taskData.status || 'AVAILABLE',
+    category: taskData.category || 'social',
+    actionUrl: taskData.actionUrl?.trim() || undefined,
+    actionText: taskData.actionText?.trim() || 'Start Mission',
+    isExternal: Boolean(taskData.actionUrl),
+    durationMode: taskData.durationMode || 'PERMANENT',
+    expiresAt: taskData.expiresAt?.trim() || undefined,
+    isActive: taskData.isActive !== false
+  };
+
+  const existingIdx = allTasks.findIndex(t => t.id === taskId);
+  if (existingIdx >= 0) {
+    allTasks[existingIdx] = fullTask;
+  } else {
+    allTasks.push(fullTask);
+  }
+
+  saveAllManagedTasks(allTasks);
+  return fullTask;
+}
+
+/**
+ * Delete a task
+ */
+export function deleteManagedTask(taskId: string): void {
+  const allTasks = getManagedTasks();
+  const filtered = allTasks.filter(t => t.id !== taskId);
+  saveAllManagedTasks(filtered);
+}
+
+/**
+ * Quick toggle task active / inactive
+ */
+export function toggleTaskActive(taskId: string): void {
+  const allTasks = getManagedTasks();
+  const task = allTasks.find(t => t.id === taskId);
+  if (task) {
+    task.isActive = task.isActive === false ? true : false;
+    saveAllManagedTasks(allTasks);
+  }
+}
+
+/**
+ * Quick update task reward
+ */
+export function updateTaskReward(taskId: string, newReward: number): void {
+  const allTasks = getManagedTasks();
+  const task = allTasks.find(t => t.id === taskId);
+  if (task) {
+    task.reward = Math.max(0, Number(newReward.toFixed(4)));
+    saveAllManagedTasks(allTasks);
+  }
+}
+

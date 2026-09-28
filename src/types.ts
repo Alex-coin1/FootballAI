@@ -211,6 +211,9 @@ export interface Task {
   actionUrl?: string;
   actionText?: string;
   isExternal?: boolean;
+  durationMode?: 'PERMANENT' | 'TIME_LIMITED' | 'DAILY_RECURRING';
+  expiresAt?: string;
+  isActive?: boolean;
 }
 
 export interface ReferralTier {

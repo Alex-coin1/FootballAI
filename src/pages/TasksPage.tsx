@@ -77,6 +77,12 @@ export const TasksPage: React.FC = () => {
       return;
     }
 
+    if (task.actionUrl) {
+      window.open(task.actionUrl, '_blank', 'noopener,noreferrer');
+      completeTask(task.id);
+      return;
+    }
+
     completeTask(task.id);
   };
 
@@ -172,11 +178,22 @@ export const TasksPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-xs font-bold text-white">{task.title}</h3>
                     <span className="rounded bg-cyan-950 px-1.5 py-0.2 font-tech text-[10px] font-bold text-cyan-400 border border-cyan-500/30">
                       +{task.reward.toFixed(2)} FAI
                     </span>
+                    {task.durationMode === 'TIME_LIMITED' && task.expiresAt && (
+                      <span className="rounded bg-amber-500/10 px-1.5 py-0.2 font-tech text-[9px] font-bold text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                        <Clock className="h-2.5 w-2.5" />
+                        <span>{settings.language === 'ar' ? `ينتهي: ${task.expiresAt}` : `Expires: ${task.expiresAt}`}</span>
+                      </span>
+                    )}
+                    {task.durationMode === 'DAILY_RECURRING' && (
+                      <span className="rounded bg-purple-500/10 px-1.5 py-0.2 font-tech text-[9px] font-bold text-purple-300 border border-purple-500/30">
+                        {settings.language === 'ar' ? 'تتجدد يومياً' : '24h Recurring'}
+                      </span>
+                    )}
                   </div>
                   <p className="mt-0.5 text-[11px] text-slate-400 leading-relaxed font-sans max-w-sm">
                     {task.description}
